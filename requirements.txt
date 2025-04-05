@@ -1,2 +1,7 @@
 Flask
 OpenAI
+Authlib
+requests
+python-dotenv
+pymongo
+dnspython
