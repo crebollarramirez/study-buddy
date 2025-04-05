@@ -1,10 +1,21 @@
 "use client";
 
+import ShopButton from "./shopButton";
+import HomeButton from "./homeButton";
+import LogoutButton from "./logoutButton";
+
 export default function NavBar() {
     return (
-        <div className="bg-white">
-        <h1 className="text-2xl font-bold">NavBar Component</h1>
-        {/* Add your chat component content here */}
+        <div className= "flex justify-between items-center h-full w-full px-4">
+            <div className="links flex flex-row items-center justify-center h-full">
+                    <HomeButton />  
+            
+                    <ShopButton />
+            </div>
+
+            <div className="logout">
+                <LogoutButton/>
+            </div>
         </div>
     );
-}
+};

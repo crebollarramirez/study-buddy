@@ -43,13 +43,12 @@ export default function Chat() {
 
   return (
     <div className="bg-white p-4 h-full max-h-full rounded shadow">
-      <div className="mb-4 overflow-y-hidden h-[80%] 
-      max-h-[80%]" ref={chatWindowRef}>
+      <div className=" overflow-y-hidden h-[90%] 
+      max-h-[90%]" ref={chatWindowRef}>
         {messages.map((message, index) => (
           <ChatBubble key={index} message={message} />
         ))}
       </div>
-
 
       <div className="chat-input flex text-cyan-950">
         <input
