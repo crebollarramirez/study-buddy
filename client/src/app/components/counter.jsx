@@ -1,20 +1,25 @@
-import React from "react";
+"use client";
 
-var counterState = 0;
+import React, { useState, useEffect } from "react";
+import server from "../../server";
 
 export default function Counter() {
-    return (
-      <div className="bg-green-400 justify-center flex flex-row items-center h-full">
-      <p> {counterState} </p>
-      </div>
-    );
+  const [counterState, setCounterState] = useState(0);
+
+  const getUserPoints = async () => {
+    server.get("/brain_points").then((response) => {
+      console.log(response.data);
+      setCounterState(response.data['brain_points']);
+    });
   }
 
-  export function incrementCounter(){
-    counterState += 1;
-    setCounter(counterState);
-    console.log(counterState);
-  };
-  export function setCounter(value){
-    counterState = value;
-  };
+  useEffect(() => {
+    getUserPoints();
+  }, []);
+
+  return (
+    <div className="bg-green-400 justify-center flex flex-row items-center h-full">
+      <p>{counterState}</p>
+    </div>
+  );
+}

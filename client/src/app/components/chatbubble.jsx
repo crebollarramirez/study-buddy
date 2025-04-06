@@ -10,7 +10,7 @@ export default function ChatBubble({message, isUser}) {
       );
     } else {
       return (
-        <div className="bg-blue-400 text-right">
+        <div className="bg-blue-400 text-left">
           {message}
         </div>
       );

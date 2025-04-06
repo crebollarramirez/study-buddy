@@ -2,7 +2,14 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask import session
 import json
 from openai import OpenAI
+from pymongo import MongoClient
 import os
+
+MONGO_URL = os.getenv("MONGO_URL", "your_mongo_url")
+client = MongoClient(MONGO_URL)
+db = client['StudyBuddy']
+print(db)
+users = db["users"]
 
 api_key = os.getenv("OPENAI_API_KEY", "your_openai_api_key")
 client = OpenAI(api_key=api_key)
@@ -12,7 +19,7 @@ socketio = SocketIO()
 
 def init_socketio(app):
     """Initialize SocketIO with the Flask app"""
-    socketio.init_app(app, cors_allowed_origins="*")
+    socketio.init_app(app, cors_allowed_origins=["http://localhost:3000", "http://127.0.0.1:3000"])
     return socketio
 
 # Socket.IO event handlers
@@ -38,6 +45,12 @@ def handle_leave(data):
 
 @socketio.on('message') # This event is triggered when a message is sent
 def handle_message(data):
+    teacher = users.find_one({"role": "teacher"})
+    if teacher["prompt"] is None:
+        print("No prompt set by teacher")
+        emit('status', {'msg': "Your teacher hasn't set a prompt yet."})
+        return
+
     try:
         # Parse the incoming message
         json_data = json.loads(data)

@@ -2,7 +2,7 @@ import React from "react";
 import Avatar from "./avatar";
 import Counter from "./counter";
 
-export default function Sidebar({message}) {
+export default function Sidebar() {
     return (
       <div className="bg-green-400 justify-center grid grid-rows-9 h-full w-full grid-cols-1">
 

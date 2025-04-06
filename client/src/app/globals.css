@@ -3,6 +3,11 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --cgray: #9F9AA4;
+  --corange: #E7CFCD;
+  --cplatinum: #CFD8D7;
+  --cgreen: #B5C9C3;
+  --cpink: #CAB1BD;
 }
 
 @theme inline {
@@ -10,7 +15,10 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --message-background: var(--cgray);
 }
+
+
 
 @media (prefers-color-scheme: dark) {
   :root {
