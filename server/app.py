@@ -1,6 +1,6 @@
 from flask import Flask, redirect, url_for, session, request
 from authlib.integrations.flask_client import OAuth
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 import os
 from dotenv import load_dotenv
 from functools import wraps  # Add this import for the decorator
@@ -28,18 +28,21 @@ MONGO_URL = os.getenv("MONGO_URL", "your_mongo_url")
 client = MongoClient(MONGO_URL)
 db = client["StudyBuddy"]
 users = db["users"]
+
 CORS(
     app,
-    supports_credentials=True,
-    origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
+    supports_credentials=True,  # Allow credentials
+    resources={r"/*": {"origins": "http://localhost:3000"}},  # Restrict to frontend origin
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # Allowed HTTP methods
+    allow_headers=["Content-Type", "Authorization"],  # Allowed headers
 )
 
-# Add these lines to fix cross-domain cookie issues
-app.config['SESSION_COOKIE_SAMESITE'] = None  # Required for cross-domain cookies
-app.config['SESSION_COOKIE_SECURE'] = False   # Set to True in production with HTTPS
-app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevents JavaScript access to cookies
+# Add these session cookie configurations
+app.config["SESSION_COOKIE_SAMESITE"] = "None"  # Allow cross-origin cookies
+app.config["SESSION_COOKIE_SECURE"] = True  # Required for SameSite=None
+app.config["SESSION_COOKIE_HTTPONLY"] = True  # Enhanced security
+app.config["SESSION_COOKIE_DOMAIN"] = None  # Let browser handle domain
+
 
 # Initialize SocketIO with the Flask app
 socketio = init_socketio(app)
@@ -51,7 +54,6 @@ google = oauth.register(
     server_metadata_url=app.config["GOOGLE_DISCOVERY_URL"],
     client_kwargs={"scope": "openid email profile"},
 )
-
 
 def login_required(f):
     @wraps(f)
@@ -79,7 +81,7 @@ def register():
 
     return google.authorize_redirect(url_for("authorize", _external=True))
 
-
+@cross_origin(supports_credentials=True)
 @app.route("/login")
 def login():
     session["auth_action"] = "login"
@@ -111,7 +113,6 @@ def authorize():
             return "User already registered", 404
 
         # Create new user in MongoDB
-
         if role == "student":
             new_user = {
                 "email": email,
@@ -132,24 +133,26 @@ def authorize():
         print(f"New user registered: {email} as {role}")
         return redirect("http://localhost:3000/login")
 
-    elif auth_action == "login":
-        print("You are logged in as... ", email)
+    print("You are logged in as... ", email)
 
-        existing_user = users.find_one({"email": email})
+    existing_user = users.find_one({"email": email})
 
-        if not existing_user:
-            # User not found, handle accordingly
-            return "User not found", 404
+    if not existing_user:
+        # User not found, handle accordingly
+        return "User not found", 404
 
-        # Store user info in session
-        session["email"] = email
-        session["name"] = name
-        session["role"] = existing_user.get("role", "Student")
+    # Store user info in session
+    session["email"] = email
+    session["name"] = name
+    session["role"] = existing_user.get("role", "Student")
+
+    print("Session saved:", session)  # Debugging log to confirm session is saved
 
     return redirect("http://localhost:3000/")
 
 
 @app.route("/logout")
+@cross_origin(supports_credentials=True)
 def logout():
     session.clear()
     return redirect(
@@ -157,15 +160,15 @@ def logout():
     )  # Redirect to external frontend login page
 
 
-@app.route("/brain_points", methods=["GET"])
 @login_required
+@app.route("/brain_points", methods=["GET"])
 def get_brain_points():
-    email = session.get("email")
+    email = session["email"]
     user = users.find_one({"email": email})
     if user:
-        brain_points = user.get("brain_points", 0)
-        return {"brain_points": brain_points}
-    return {"error": "User not found"}, 404
+        return {"brain_points": user["brain_points"]}
+    else:
+        return {"error": "User not found"}, 404
 
 
 @app.route("/students", methods=["GET"])
@@ -187,7 +190,6 @@ def set_prompt():
     data = request.get_json()
     print(data["prompt"])
     return {"status": "success"}
-
 
 if __name__ == "__main__":
     socketio.run(app, debug=True)
