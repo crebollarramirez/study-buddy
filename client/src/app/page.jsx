@@ -1,6 +1,7 @@
 import Chat from "./components/chat";
 import NavBar from "./components/navbar";
 import Sidebar from "./components/sidebar";
+import Shop from "./components/shop";
 
 export default function Home() {
   return (
@@ -8,7 +9,7 @@ export default function Home() {
       <div className="bg-blue-100 rounded shadow row-span-1 col-span-2 border border-blue-900">
         <NavBar />
       </div>
-      <Chat />
+      <Shop />
       <div className="bg-white-100  rounded shadow row-span-1 col-span-1">
         <Sidebar />
       </div>

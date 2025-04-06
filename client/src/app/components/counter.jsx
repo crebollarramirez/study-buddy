@@ -29,7 +29,7 @@ export default function Counter() {
       {/* Counter number */}
       <p className="absolute text-black text-6xl font-bold mb-10">{counterState}</p>
       {/* Brain image */}
-      <Image src={brain} alt="Brain" width={250} height={250} />
+      <Image src={brain} alt="Brain" width={200} height={200} />
       {/* Fetch Brain Points Button */}
       <button
         onClick={getUserPoints}
