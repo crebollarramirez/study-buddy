@@ -10,9 +10,8 @@ export default function Home() {
         <NavBar />
       </div>
 
-      <div className="bg-white-100 rounded shadow row-span-1 col-span-1">
         <Chat />
-      </div>
+
 
       <div className="bg-white-100  rounded shadow row-span-1 col-span-1">
         <Sidebar />
