@@ -39,6 +39,16 @@ export default function Chat() {
           chatWindowRef.current.scrollTop = chatWindowRef.current.scrollHeight;
         }
       }, [messages]);
+
+
+  // Dummy data
+  const dummyData = [
+    "Hello! How can I help you today?",
+    "What is your name?",
+    "Where are you from?",
+    "What do you do?",
+    "How can I assist you?",
+  ];
     
 
   return (
@@ -46,7 +56,7 @@ export default function Chat() {
       <div className=" overflow-y-hidden h-[90%] 
       max-h-[90%]" ref={chatWindowRef}>
         {messages.map((message, index) => (
-          <ChatBubble key={index} message={message} />
+          <ChatBubble key={index} message={message} isUser={false}/>
         ))}
       </div>
 
