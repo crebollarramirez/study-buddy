@@ -20,23 +20,17 @@ export default function Counter() {
     }
   };
 
-  // useEffect(() => {
-  //   getUserPoints();
-  // }, []);
+  useEffect(() => {
+    getUserPoints();
+  }, []);
 
   return (
-    <div className="bg-green-400 justify-center flex items-center h-full relative">
+    <div className="bg-green-400 justify-center flex items-center h-1/3 w-full border">
       {/* Counter number */}
       <p className="absolute text-black text-6xl font-bold mb-10">{counterState}</p>
       {/* Brain image */}
       <Image src={brain} alt="Brain" width={250} height={250} />
       {/* Fetch Brain Points Button */}
-      <button
-        onClick={getUserPoints}
-        className="absolute bottom-10 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700"
-      >
-        Get Brain Points
-      </button>
     </div>
   );
 }

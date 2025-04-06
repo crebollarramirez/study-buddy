@@ -13,7 +13,7 @@ export default function Chat() {
 
   // Initialize socket connection
   useEffect(() => {
-    const newSocket = io(API_URL);
+    const newSocket = io(API_URL, {withCredentials: true});
 
     newSocket.on("connect", () => {
       console.log("Connected to WebSocket server");
@@ -66,7 +66,7 @@ export default function Chat() {
   }, [messages]);
 
   return (
-    <div className="flex flex-col h-full bg-white rounded-lg shadow-md border border-gray-200">
+    <div className="flex flex-col w-[70%] h-full bg-white rounded-lg shadow-md border border-gray-200">
       {/* Header */}
       <div className="bg-blue-600 text-white p-4 rounded-t-lg flex items-center justify-between">
         <h2 className="text-lg font-semibold">Study Buddy</h2>
@@ -81,7 +81,7 @@ export default function Chat() {
 
       {/* Chat Window */}
       <div
-        className="flex-grow overflow-y-auto h-[1vh] p-4 space-y-4"
+        className="flex-grow overflow-y-scroll p-4 space-y-4"
         ref={chatWindowRef}
       >
         {messages.map((message, index) => (

@@ -4,15 +4,9 @@ import Counter from "./counter";
 
 export default function Sidebar() {
     return (
-      <div className="bg-green-400 justify-center grid grid-rows-9 h-full w-full grid-cols-1">
-
-        <div className="row-span-2 border h-full w-full">
+      <div className="bg-green-400 flex flex-col items-center justify-center h-full w-[30%]">
           <Counter />
-        </div>
-        
-        <div className="row-span-7 border h-full w-full"> 
           <Avatar />
-        </div>
 
       </div>
     );

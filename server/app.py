@@ -156,7 +156,7 @@ def authorize():
 def logout():
     session.clear()
     return redirect(
-        "http://localhost:3000/login"
+        "http://localhost:3000/"
     )  # Redirect to external frontend login page
 
 
@@ -184,12 +184,67 @@ def get_students():
     ]
     return {"students": student_list}
 
+@app.route("/account-type", methods=["GET"])
+def get_account_type():
+    email = session.get("email")
+    user = users.find_one({"email": email})
+    if user:
+        return {"account_type": user["role"]}
+    return {"error": "User not found"}, 404
+
+
 
 @app.route("/bot/set-prompt", methods=["POST"])
 def set_prompt():
     data = request.get_json()
-    print(data["prompt"])
-    return {"status": "success"}
+    email = session.get("email")
+    
+    if not email:
+        return {"error": "User not authenticated"}, 401
+
+    user = users.find_one({"email": email})
+    if not user:
+        return {"error": "User not found"}, 404
+
+    prompt = data.get("prompt")
+    if not prompt:
+        return {"error": "Prompt is required"}, 400
+
+    # Update the user's prompt in the database
+    users.update_one({"email": email}, {"$set": {"prompt": prompt}})
+    return {"status": "success", "message": "Prompt updated successfully"}
+
+@app.route("/bot/get-prompt", methods=["GET"])
+def get_prompt():
+    email = session.get("email")
+    
+    if not email:
+        return {"error": "User not authenticated"}, 401
+
+    user = users.find_one({"email": email})
+    if not user:
+        return {"error": "User not found"}, 404
+
+    prompt = user.get("prompt")
+    if not prompt:
+        return {"error": "Prompt not set"}, 404
+
+    return {"prompt": prompt}
+
+@app.route("/bot/delete-prompt", methods=["DELETE"])
+def delete_prompt():
+    email = session.get("email")
+    
+    if not email:
+        return {"error": "User not authenticated"}, 401
+
+    user = users.find_one({"email": email})
+    if not user:
+        return {"error": "User not found"}, 404
+
+    # Update the user's prompt in the database
+    users.update_one({"email": email}, {"$set": {"prompt": None}})
+    return {"status": "success", "message": "Prompt deleted successfully"}
 
 if __name__ == "__main__":
     socketio.run(app, debug=True)
