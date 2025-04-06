@@ -1,14 +1,14 @@
 "use client";
 import { useState } from "react";
 import GoogleButton from "../components/googleButton";
+import { API_URL } from "@/constants";
 
 export default function Register() {
   const [role, setRole] = useState("Student"); // Default role is "Student"
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    console.log(`Logging in as a ${role}`);
-    // Add logic to handle login based on the selected role
+    e.preventDefault(); // Prevent the default form submission
+    window.location.href = `${API_URL}/register?role=${role}`;
   };
 
   return (
