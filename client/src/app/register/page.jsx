@@ -24,8 +24,8 @@ export default function Register() {
                   type="radio"
                   name="role"
                   value="Student"
-                  checked={role === "Student"}
-                  onChange={() => setRole("Student")}
+                  checked={role === "student"}
+                  onChange={() => setRole("student")}
                   className="accent-blue-500"
                 />
                 <span className="text-black">Student</span>
@@ -35,8 +35,8 @@ export default function Register() {
                   type="radio"
                   name="role"
                   value="Teacher"
-                  checked={role === "Teacher"}
-                  onChange={() => setRole("Teacher")}
+                  checked={role === "teacher"}
+                  onChange={() => setRole("teacher")}
                   className="accent-blue-500"
                 />
                 <span className="text-black">Teacher</span>

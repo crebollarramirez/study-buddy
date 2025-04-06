@@ -84,12 +84,23 @@ def authorize():
             return "User already registered", 404
 
         # Create new user in MongoDB
-        new_user = {
-            "email": email,
-            "name": name,
-            "role": role,
-        }
+
+        if role == "student":
+            new_user = {
+                "email": email,
+                "name": name,
+                "role": role,
+                "brain_points": 0,
+            }
+        else:
+            new_user = {
+                "email": email,
+                "name": name,
+                "role": role,
+            }
+
         user_id = users.insert_one(new_user).inserted_id
+        print("user_id: ", user_id) 
         print(f"New user registered: {email} as {role}")
         return redirect("http://localhost:3000/login")
     
