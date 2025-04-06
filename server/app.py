@@ -6,6 +6,7 @@ from functools import wraps  # Add this import for the decorator
 from pymongo import MongoClient
 from bson import ObjectId
 import json
+from socket_handlers import init_socketio
 load_dotenv()
 
 app = Flask(__name__)
@@ -22,6 +23,9 @@ client = MongoClient(MONGO_URL)
 db = client['StudyBuddy']
 print(db)
 users = db["users"]
+
+# Initialize SocketIO with the Flask app
+socketio = init_socketio(app)
 
 google = oauth.register(
     name="google",
@@ -126,4 +130,4 @@ def logout():
     return redirect("http://localhost:3000/login")  # Redirect to external frontend login page
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    socketio.run(app, debug=True)

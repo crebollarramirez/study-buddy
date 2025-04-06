@@ -1,7 +1,9 @@
 Flask
-OpenAI
+openai
 Authlib
 requests
 python-dotenv
 pymongo
 dnspython
+flask-socketio
+eventlet
