@@ -10,7 +10,7 @@ export default function Counter() {
 
   const getUserPoints = async () => {
     try {
-      const response = await server.get("/brain_points", { withCredentials: true });
+      const response = await server.get("/brain_points");
       console.log(response.data);
       setCounterState(response.data.brain_points);
     } catch (error) {
@@ -27,10 +27,16 @@ export default function Counter() {
   return (
     <div className="bg-green-400 justify-center flex items-center h-full relative">
       {/* Counter number */}
-      {/* Brain image */}
-      <p className="absolute text-black font- text-6xl font-bold mb-10">{counterState}</p>
+      <p className="absolute text-black text-6xl font-bold mb-10">{counterState}</p>
       {/* Brain image */}
       <Image src={brain} alt="Brain" width={250} height={250} />
+      {/* Fetch Brain Points Button */}
+      <button
+        onClick={getUserPoints}
+        className="absolute bottom-10 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-700"
+      >
+        Get Brain Points
+      </button>
     </div>
   );
 }
