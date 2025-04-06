@@ -1,6 +1,6 @@
-Flask
+flask
 openai
-Authlib
+authlib
 requests
 python-dotenv
 pymongo

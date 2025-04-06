@@ -81,7 +81,7 @@ export default function Chat() {
 
       {/* Chat Window */}
       <div
-        className="flex-grow overflow-y-auto h-[75vh] p-4 space-y-4"
+        className="flex-grow overflow-y-auto h-[1vh] p-4 space-y-4"
         ref={chatWindowRef}
       >
         {messages.map((message, index) => (

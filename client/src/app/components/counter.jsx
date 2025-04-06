@@ -20,9 +20,9 @@ export default function Counter() {
     }
   };
 
-  useEffect(() => {
-    getUserPoints();
-  }, []);
+  // useEffect(() => {
+  //   getUserPoints();
+  // }, []);
 
   return (
     <div className="bg-green-400 justify-center flex items-center h-full relative">
