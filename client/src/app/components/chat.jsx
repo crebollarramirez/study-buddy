@@ -14,6 +14,7 @@
   
 import React, { useState, useEffect, useRef } from "react";
 import ChatBubble from "./chatbubble";
+import { incrementCounter } from "./counter";
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
@@ -24,6 +25,7 @@ export default function Chat() {
     if (input.trim()) {
       setMessages([...messages, input]);
       setInput("");
+      incrementCounter();
     }
   };
 
@@ -42,40 +44,80 @@ export default function Chat() {
 
 
   // Dummy data
-  const dummyData = [
-    "Hello! How can I help you today?",
-    "What is your name?",
-    "Where are you from?",
-    "What do you do?",
-    "How can I assist you?",
+  const smallDummyData = [
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false]
   ];
-    
+
+  const dummyData = [
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false]
+  ];
 
   return (
-    <div className="bg-white p-4 h-full max-h-full rounded shadow">
-      <div className=" overflow-y-hidden h-[90%] 
-      max-h-[90%]" ref={chatWindowRef}>
-        {messages.map((message, index) => (
-          <ChatBubble key={index} message={message} isUser={false}/>
-        ))}
-      </div>
+<div className="bg-white h-full w-full rounded shadow">
+  <div className="overflow-y-hidden h-[75vh]" ref={chatWindowRef}>
+    {[...dummyData, ...messages].map((message, index) => (
+      <ChatBubble 
+        key={index} 
+        message={Array.isArray(message) ? message[0] : message} 
+        isUser={Array.isArray(message) ? message[1] : false} 
+      />
+    ))}
+  </div>
 
-      <div className="chat-input flex text-cyan-950">
-        <input
-          type="text"
-          className="flex-grow border p-2 rounded"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
-        />
-        <button
-          className="ml-2 bg-blue-500 text-white p-2 rounded"
-          onClick={handleSend}
-        >
-          Send
-        </button>
-      </div>
-    </div>
+  <div className="flex text-cyan-950 h-[10%]">
+    <input
+      type="text"
+      className="flex-grow border p-2 rounded"
+      value={input}
+      onChange={(e) => setInput(e.target.value)}
+      onKeyDown={handleKeyDown}
+      placeholder="Type a message..."
+    />
+    <button
+      className="ml-2 bg-blue-500 text-white p-2 rounded"
+      onClick={handleSend}
+    >
+      Send
+    </button>
+  </div>
+</div>
   );
 }
