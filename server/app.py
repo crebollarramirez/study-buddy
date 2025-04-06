@@ -28,6 +28,7 @@ MONGO_URL = os.getenv("MONGO_URL", "your_mongo_url")
 client = MongoClient(MONGO_URL)
 db = client["StudyBuddy"]
 users = db["users"]
+messages = db["messages"]
 
 CORS(
     app,
@@ -245,6 +246,30 @@ def delete_prompt():
     # Update the user's prompt in the database
     users.update_one({"email": email}, {"$set": {"prompt": None}})
     return {"status": "success", "message": "Prompt deleted successfully"}
+
+@app.route("/messages", methods=["GET"])
+def get_all_student_messages():
+    all_messages = messages.find({})  # Query all messages with no filter
+    
+    # Dictionary to group messages by email
+    grouped_messages = {}
+    
+    for message in all_messages:
+        email = message["email"]
+        message_data = {
+            "message": message["message"],
+            "timestamp": message["timestamp"],
+            "prompt": message["prompt"],
+            "sender": message["sender"],
+        }
+        
+        # Add message to the appropriate email group
+        if email in grouped_messages:
+            grouped_messages[email].append(message_data)
+        else:
+            grouped_messages[email] = [message_data]
+    
+    return {"messages": grouped_messages}
 
 if __name__ == "__main__":
     socketio.run(app, debug=True)

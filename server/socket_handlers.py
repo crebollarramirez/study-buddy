@@ -4,12 +4,14 @@ import json
 from openai import OpenAI
 from pymongo import MongoClient
 import os
+from datetime import datetime  # Add this import
 
 MONGO_URL = os.getenv("MONGO_URL", "your_mongo_url")
 client = MongoClient(MONGO_URL)
 db = client["StudyBuddy"]
 print(db)
 users = db["users"]
+messages = db["messages"]
 
 api_key = os.getenv("OPENAI_API_KEY", "your_openai_api_key")
 client = OpenAI(api_key=api_key)
@@ -73,7 +75,18 @@ def handle_message(data):
         print("No prompt set by teacher")
         emit("response", {"message": "Your teacher hasn't set a prompt yet."})
         return
+    
+    message = {}
+    message["message"] = json.loads(data).get("message", "") 
+    message["timestamp"] = datetime.now()
+    message["email"] = email
+    message["prompt"] = prompt
+    message["sender"] = "student"
 
+    messages.insert_one(message)
+    
+    # messages.insert_one({"email": email, "message": data["message"]})
+    
     try:
         # Parse the incoming message
         json_data = json.loads(data)
@@ -101,6 +114,16 @@ def handle_message(data):
         # Extract assistant's response
         assistant_response = json.loads(response.choices[0].message.content)
         print(assistant_response)
+
+        message = {}
+        message["message"] = assistant_response['response']
+        message["timestamp"] = datetime.now()
+        message["email"] = email
+        message["prompt"] = prompt
+        message["sender"] = "bot"
+
+        print(message)
+        messages.insert_one(message)
 
         # Send response back to the user
         emit("response", {"message": assistant_response['response'], "from": "assistant"})

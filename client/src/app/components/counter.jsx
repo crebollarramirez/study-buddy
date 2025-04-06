@@ -7,16 +7,18 @@ import brain from "../../../public/brain_pixel.png";
 
 export default function Counter() {
   const [counterState, setCounterState] = useState(0);
+  const [loading, setLoading] = useState(true);
 
   const getUserPoints = async () => {
     try {
+      setLoading(true);
       const response = await server.get("/brain_points");
-      console.log(response.data);
       setCounterState(response.data.brain_points);
     } catch (error) {
       console.error("Error fetching brain points:", error);
-      // Handle error gracefully - maybe set a default value or error state
       setCounterState(0);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -25,12 +27,27 @@ export default function Counter() {
   }, []);
 
   return (
-    <div className="bg-green-400 justify-center flex items-center h-1/3 w-full border">
-      {/* Counter number */}
-      <p className="absolute text-black text-6xl font-bold mb-10">{counterState}</p>
-      {/* Brain image */}
-      <Image src={brain} alt="Brain" width={200} height={200} />
-      {/* Fetch Brain Points Button */}
+    <div className="flex flex-col items-center justify-center w-full h-1/2">
+      <div className="text-blue-600/80 text-xl font-bold mb-2">Brain Points</div>
+      <div className="relative flex items-center justify-center">
+        <div className="absolute z-10 flex items-center justify-center">
+          <p className={`text-6xl font-bold ${loading ? 'text-gray-400' : 'black'}`}>
+            {loading ? "..." : counterState}
+          </p>
+        </div>
+        <div className="relative w-60 h-60 opacity-80 hover:opacity-100 transition-all duration-700">
+          <Image 
+            src={brain} 
+            alt="Brain" 
+            layout="fill" 
+            objectFit="contain"
+            className="animate-pulse"
+          />
+        </div>
+      </div>
+      <div className="mt-4 text-gray-600 text-sm text-center">
+        Answer questions correctly to earn more brain points!
+      </div>
     </div>
   );
 }

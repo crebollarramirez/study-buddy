@@ -14,13 +14,36 @@ export default function ProtectedRoute({ children, requiredRole }) {
         const response = await server.get('/account-type');
         const userRole = response.data.account_type;
 
-        // Check if the user is authenticated and has the required role
-        if (!userRole || (requiredRole && userRole !== requiredRole)) {
-          router.push('/login'); // Redirect to home if not authenticated or role doesn't match
+        // If user is not authenticated (no role), redirect to login
+        if (!userRole) {
+          router.push('/login');
+          return;
+        }
+
+        // Redirect based on user role if not on the correct page
+        if (userRole === 'student' && requiredRole !== 'student') {
+          router.push('/');
+          return;
+        }
+        
+        if (userRole === 'teacher' && requiredRole !== 'teacher') {
+          router.push('/teacher-view');
+          return;
+        }
+
+        // If role doesn't match required role, redirect appropriately
+        if (requiredRole && userRole !== requiredRole) {
+          if (userRole === 'student') {
+            router.push('/');
+          } else if (userRole === 'teacher') {
+            router.push('/teacher-view');
+          } else {
+            router.push('/login');
+          }
         }
       } catch (error) {
         console.error('Error checking authentication:', error);
-        router.push('/'); // Redirect to home on error
+        router.push('/login');
       } finally {
         setLoading(false);
       }

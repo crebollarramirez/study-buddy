@@ -13,7 +13,7 @@ export default function Chat() {
 
   // Initialize socket connection
   useEffect(() => {
-    const newSocket = io(API_URL, {withCredentials: true});
+    const newSocket = io(API_URL, { withCredentials: true });
 
     newSocket.on("connect", () => {
       console.log("Connected to WebSocket server");
@@ -47,7 +47,10 @@ export default function Chat() {
         { text: input, isUser: true },
       ]);
 
-      socket.emit("message", JSON.stringify({ message: input, user_id: "current_user" }));
+      socket.emit(
+        "message",
+        JSON.stringify({ message: input, user_id: "current_user" })
+      );
       setInput("");
     }
   };
@@ -66,9 +69,9 @@ export default function Chat() {
   }, [messages]);
 
   return (
-    <div className="flex flex-col w-[70%] h-full bg-white rounded-lg shadow-md border border-gray-200">
+    <div className="flex flex-col w-[70%] h-full bg-white rounded-md shadow-lg">
       {/* Header */}
-      <div className="bg-blue-600 text-white p-4 rounded-t-lg flex items-center justify-between">
+      <div className="bg-blue-600/80 text-white p-4 rounded-t-lg flex items-center justify-between">
         <h2 className="text-lg font-semibold">Study Buddy</h2>
         <span
           className={`text-sm ${
@@ -94,7 +97,7 @@ export default function Chat() {
             <div
               className={`max-w-xs p-3 rounded-lg text-sm ${
                 message.isUser
-                  ? "bg-blue-500 text-white"
+                  ? "bg-blue-600/80 text-white"
                   : "bg-gray-200 text-black "
               }`}
             >
@@ -116,9 +119,9 @@ export default function Chat() {
           disabled={!isConnected}
         />
         <button
-          className={`px-4 py-2 rounded-lg ${
+          className={`px-4 py-2 rounded-lg transition-all duration-300 ${
             isConnected
-              ? "bg-blue-500 text-white hover:bg-blue-600"
+              ? "bg-blue-600/80 text-white hover:bg-blue-700 hover:scale-105 hover:shadow-lg"
               : "bg-gray-300 text-gray-500 cursor-not-allowed"
           }`}
           onClick={handleSend}
