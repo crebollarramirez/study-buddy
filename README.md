@@ -16,6 +16,40 @@ Study Buddy is an innovative web application designed to bridge the gap between 
 ![Flask](https://img.shields.io/badge/flask-%23000.svg?style=for-the-badge&logo=flask&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
 
-## How It Works
-Teachers use the Teacher Interface to prompt the ChatBot and grant access to students. Students then engage with the ChatBot via the Student Interface, explaining topics and receiving immediate, deep questions that encourage critical thinking. This interaction is designed to simulate a one-on-one session with a mentor, utilizing the principles of Socratic teaching.
+## Set Up
 
+Follow these steps to set up and run the client side of the application:
+
+### 1. Open Your Terminal
+Open your command line interface, which can be Terminal on macOS and Linux or Command Prompt/PowerShell on Windows.
+
+### 2. Navigate to the Client Directory
+Change directory to where the client code is stored. If the client folder is a subdirectory of your main project folder and named `client`, navigate to it with:
+```bash
+cd client
+```
+**Then run this command:**
+```bash
+npm install
+```
+
+**Then run this command:**
+```bash
+npm run dev
+```
+
+**For the backend you do:**
+```bash
+cd server
+```
+
+**Then run this command:**
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+python3 app.py
+```
+
+Remember to add necessary .env files!!
