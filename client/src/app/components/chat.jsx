@@ -43,20 +43,52 @@ export default function Chat() {
 
   // Dummy data
   const dummyData = [
-    "Hello! How can I help you today?",
-    "What is your name?",
-    "Where are you from?",
-    "What do you do?",
-    "How can I assist you?",
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false],
+    ["Hello! How can I help you today?", true],
+    ["What is your name?", false],
+    ["Where are you from?", true],
+    ["What do you do?", true],
+    ["How can I assist you?", false]
   ];
-    
 
   return (
-    <div className="bg-white p-4 h-full max-h-full rounded shadow">
+    <div className="bg-white h-full max-h-full rounded shadow">
       <div className=" overflow-y-hidden h-[90%] 
       max-h-[90%]" ref={chatWindowRef}>
         {messages.map((message, index) => (
           <ChatBubble key={index} message={message} isUser={false}/>
+        ))}
+        {dummyData.map((message, index) => (
+          <ChatBubble key={index} message={message[0]} isUser={message[1]}/>
         ))}
       </div>
 
