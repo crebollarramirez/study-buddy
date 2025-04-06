@@ -19,6 +19,3 @@ Study Buddy is an innovative web application designed to bridge the gap between 
 ## How It Works
 Teachers use the Teacher Interface to prompt the ChatBot and grant access to students. Students then engage with the ChatBot via the Student Interface, explaining topics and receiving immediate, deep questions that encourage critical thinking. This interaction is designed to simulate a one-on-one session with a mentor, utilizing the principles of Socratic teaching.
 
-## Getting Started
-To get started with Study Buddy:
-1. Clone this repository:

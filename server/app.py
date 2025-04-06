@@ -5,7 +5,6 @@ import os
 from dotenv import load_dotenv
 from functools import wraps  # Add this import for the decorator
 from pymongo import MongoClient
-from bson import ObjectId
 import json
 from socket_handlers import init_socketio
 
@@ -127,6 +126,7 @@ def authorize():
                 "name": name,
                 "role": role,
                 "prompt": None,
+                "brain_points": 0,
             }
 
         user_id = users.insert_one(new_user).inserted_id
@@ -186,6 +186,7 @@ def get_students():
     return {"students": student_list}
 
 @app.route("/account-type", methods=["GET"])
+@cross_origin(supports_credentials=True)
 def get_account_type():
     email = session.get("email")
     user = users.find_one({"email": email})
