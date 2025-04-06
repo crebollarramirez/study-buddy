@@ -13,9 +13,7 @@ export default function Chat() {
 
   // Initialize socket connection
   useEffect(() => {
-    const newSocket = io(API_URL, {
-      withCredentials: true,
-    });
+    const newSocket = io(API_URL);
 
     newSocket.on("connect", () => {
       console.log("Connected to WebSocket server");
@@ -71,7 +69,7 @@ export default function Chat() {
     <div className="flex flex-col h-full bg-white rounded-lg shadow-md border border-gray-200">
       {/* Header */}
       <div className="bg-blue-600 text-white p-4 rounded-t-lg flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Chat Assistant</h2>
+        <h2 className="text-lg font-semibold">Study Buddy</h2>
         <span
           className={`text-sm ${
             isConnected ? "text-green-300" : "text-red-300"

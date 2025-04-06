@@ -27,7 +27,6 @@ app.config["GOOGLE_DISCOVERY_URL"] = (
 MONGO_URL = os.getenv("MONGO_URL", "your_mongo_url")
 client = MongoClient(MONGO_URL)
 db = client["StudyBuddy"]
-print(db)
 users = db["users"]
 CORS(
     app,
@@ -36,6 +35,11 @@ CORS(
     methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+# Add these lines to fix cross-domain cookie issues
+app.config['SESSION_COOKIE_SAMESITE'] = None  # Required for cross-domain cookies
+app.config['SESSION_COOKIE_SECURE'] = False   # Set to True in production with HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevents JavaScript access to cookies
 
 # Initialize SocketIO with the Flask app
 socketio = init_socketio(app)

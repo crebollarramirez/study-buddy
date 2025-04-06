@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
+// import Prompt from '@/app/teacher-view/components/Prompt';
 import server from '@/server';
+
 
 const StudentList = () => {
     const [students, setStudents] = useState([]);
@@ -19,10 +21,14 @@ const StudentList = () => {
     return (
         <div className="h-full w-1/3">
             {students.map(student => (
-                <div key={student.id} className="bg-gray-200 p-4 m-2 rounded text-black">
+                <div key={student.id} className="bg-red-100 p-4 m-2 rounded text-black">
                     {student.name}
                 </div>
             ))}
+
+        {/* <div>
+            <Prompt />
+        </div> */}
         </div>
     )
 };

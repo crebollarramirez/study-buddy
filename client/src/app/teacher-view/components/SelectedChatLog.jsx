@@ -1,7 +1,6 @@
 const SelectedChatLog = () => {
     return (
-        <div className="h-full w-2/3 bg-amber-700">
-
+        <div className="h-full w-2/3 bg-red-700">
         </div>
     )
 }
