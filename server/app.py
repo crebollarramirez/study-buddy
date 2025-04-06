@@ -50,7 +50,7 @@ def home():
 def register():
     session["auth_action"] = "register"
     role = request.args.get("role", "Student")
-    print("The role is: ", role)
+    session["role"] = role
 
     return google.authorize_redirect(url_for("authorize", _external=True))
 
@@ -75,23 +75,22 @@ def authorize():
     
     if auth_action == "register":
         # Registration flow
-        role = session.pop("pending_role", "Student")
+        role = session.pop("role", "Student")
         
         # Check if user already exists
         existing_user = users.find_one({"email": email})
         
-        if not existing_user:
-            # Create new user in MongoDB
-            new_user = {
-                "email": email,
-                "name": name,
-                "role": role,
-            }
-            user_id = users.insert_one(new_user).inserted_id
-            print(f"New user registered: {email} as {role}")
-        else:
-            print(f"User already exists: {email}")
-        
+        if existing_user:
+            return "User already registered", 404
+
+        # Create new user in MongoDB
+        new_user = {
+            "email": email,
+            "name": name,
+            "role": role,
+        }
+        user_id = users.insert_one(new_user).inserted_id
+        print(f"New user registered: {email} as {role}")
         return redirect("http://localhost:3000/login")
     
     elif auth_action == "login":
@@ -102,6 +101,11 @@ def authorize():
         if not existing_user:
             # User not found, handle accordingly
             return "User not found", 404
+        
+            # Store user info in session
+        session["email"] = email
+        session["name"] = name
+        session["role"] = existing_user.get("role", "Student")
 
     return redirect("http://localhost:3000/")
 
