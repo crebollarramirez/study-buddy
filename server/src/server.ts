@@ -174,14 +174,7 @@ app.get(
   }
 );
 
-app.get("/account-type", requireAuth, (req: Request, res: Response) => {
-  try {
-    const user = req.user as any;
-    res.json({ account_type: user.role });
-  } catch (error) {
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+
 
 app.post(
   "/bot/set-prompt",

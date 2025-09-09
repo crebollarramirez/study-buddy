@@ -91,6 +91,7 @@ const createAuthRouter = (): AuthRouter => {
       }
     }
   );
+
   router.get("/logout", (req: Request, res: Response) => {
     req.logout((err) => {
       if (err) {
@@ -101,6 +102,21 @@ const createAuthRouter = (): AuthRouter => {
       console.log("User logged out successfully");
       res.redirect(process.env.CLIENT || "");
     });
+  });
+
+  router.get("/isAuthenticated", (req: Request, res: Response) => {
+    try {
+      if (!req.isAuthenticated()) {
+        return res.json({ authenticated: false, account_type: null });
+      }
+
+      const user = req.user as any;
+      res.json({ authenticated: true, account_type: user.role });
+    } catch (error) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+
+
   });
 
   return { router, initializeAuthRoutes };
