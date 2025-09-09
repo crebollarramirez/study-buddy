@@ -1,6 +1,35 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { Collection } from "mongodb";
+import { Request, Response, NextFunction } from "express";
+
+// Authentication middleware
+export const requireAuth = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+  next();
+};
+
+// Role-based authentication middleware
+export const requireRole = (role: string) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const user = req.user as any;
+    if (user.role !== role) {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+
+    next();
+  };
+};
 
 export function configurePassport(users: Collection) {
   passport.use(
@@ -8,7 +37,7 @@ export function configurePassport(users: Collection) {
       {
         clientID: process.env.GOOGLE_CLIENT_ID || "",
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-        callbackURL: "http://localhost:3000/auth/google/callback", // Explicit localhost
+        callbackURL: process.env.BACKEND_URL + "/auth/google/callback", // Explicit localhost
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
