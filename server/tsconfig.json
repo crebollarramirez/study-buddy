@@ -2,7 +2,7 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     // File Layout
-    "rootDir": "./src",
+    "rootDir": ".",
     "outDir": "./dist",
     // "outDir": "./dist",
 
@@ -10,7 +10,7 @@
     // See also https://aka.ms/tsconfig/module
     "module": "commonjs",
     "target": "esnext",
-    "types": [],
+    "types": ["node", "jest"],
     // For nodejs:
     // "lib": ["esnext"],
     // "types": ["node"],
@@ -45,8 +45,17 @@
 
     // Interoperability Options
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+
+    // Base URL and Paths
+    "baseUrl": ".",
+    "paths": {
+      "@tests/*": ["tests/*"]
+    }
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*",
+    "tests/**/*"
+  ],
   "exclude": ["node_modules"]
 }

@@ -7,10 +7,37 @@ interface AuthRouter {
   initializeAuthRoutes: (users: Collection) => void;
 }
 
+/**
+ * Create and return an authentication router with lazy initialization.
+ *
+ * The returned object contains an Express `router` with all authentication
+ * routes mounted and an `initializeAuthRoutes` function that must be called
+ * with a MongoDB `Collection` instance used for user persistence. The
+ * `initializeAuthRoutes` design allows the router to be created at import
+ * time and wired up with the real collection later (useful for tests).
+ *
+ * Routes provided:
+ *  - GET `/register`  -> stores role in session and redirects to `/auth/google`
+ *  - GET `/login`     -> sets session hint and redirects to `/auth/google`
+ *  - GET `/google`    -> passport.authenticate starter
+ *  - GET `/google/callback` -> passport.authenticate callback + create user
+ *  - GET `/logout`    -> logs out and redirects to client
+ *  - GET `/isAuthenticated` -> returns { authenticated, account_type }
+ *
+ * @returns AuthRouter containing `router` and `initializeAuthRoutes(users)`.
+ */
 const createAuthRouter = (): AuthRouter => {
   const router = Router();
   let usersCollection: Collection;
 
+  /**
+   * Initialize the router with the `users` collection.
+   *
+   * This must be called before mounting the router in an Express app so that
+   * the callback route can create or query users as needed.
+   *
+   * @param users - MongoDB `Collection` to use for user lookups and inserts.
+   */
   const initializeAuthRoutes = (users: Collection) => {
     usersCollection = users;
   };
@@ -115,8 +142,6 @@ const createAuthRouter = (): AuthRouter => {
     } catch (error) {
       res.status(500).json({ error: "Internal server error" });
     }
-
-
   });
 
   return { router, initializeAuthRoutes };
