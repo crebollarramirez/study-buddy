@@ -1,7 +1,6 @@
 import request from "supertest";
 import { createTestApp, closeTestApp, mockCollection } from "@tests/setup/testApp";
 import type { Application } from "express";
-import passport from "passport";
 
 describe("Authentication Routes", () => {
   let app: Application;
