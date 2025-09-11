@@ -4,6 +4,81 @@ import OpenAI from "openai";
 
 interface CustomSocket extends Socket {
   request: any;
+  user?: any; // Add user property for authenticated user
+}
+
+// Socket-specific authentication function
+async function authenticateSocket(
+  socket: CustomSocket,
+  users: Collection
+): Promise<any | null> {
+  console.log("Socket connection attempt");
+  const session = socket.request.session;
+
+  console.log("Session data:", session);
+  console.log("Session passport user:", session?.passport?.user);
+
+  // Check if user is authenticated via Passport
+  const userEmail = session?.passport?.user;
+
+  if (!userEmail) {
+    console.log("Unauthenticated connection attempt");
+    socket.emit("auth_error", {
+      message: "Not authenticated - please log in first",
+    });
+    socket.disconnect();
+    return null;
+  }
+
+  // Get full user data from database using Passport's stored user ID
+  try {
+    const user = await users.findOne({ email: userEmail });
+    if (!user) {
+      console.log("User not found in database:", userEmail);
+      socket.emit("auth_error", {
+        message: "User not found - please log in again",
+      });
+      socket.disconnect();
+      return null;
+    }
+
+    console.log(`Client authenticated: ${user.email} (${user.role})`);
+    return user;
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+    socket.emit("auth_error", {
+      message: "Authentication error - please try again",
+    });
+    socket.disconnect();
+    return null;
+  }
+}
+
+// Helper function to send welcome message based on user role
+async function sendWelcomeMessage(socket: CustomSocket, users: Collection) {
+  try {
+    const teacher = await users.findOne({ role: "teacher" });
+    const prompt = teacher?.prompt;
+    const user = socket.user;
+
+    if (user.role === "student") {
+      if (prompt) {
+        socket.emit("response", {
+          message: `Welcome, ${user.name}! Your teacher has set the prompt to be: ${prompt}`,
+        });
+      } else {
+        socket.emit("response", {
+          message: `Welcome, ${user.name}! No prompt has been set by your teacher yet.`,
+        });
+      }
+    } else if (user.role === "teacher") {
+      socket.emit("response", {
+        message: `Welcome, ${user.name}! You are connected as a teacher.`,
+      });
+    }
+  } catch (error) {
+    console.error("Error fetching teacher prompt:", error);
+  }
 }
 
 export function initializeSocketHandlers(
@@ -13,64 +88,64 @@ export function initializeSocketHandlers(
   openai: OpenAI
 ) {
   io.on("connection", async (socket: CustomSocket) => {
-    console.log("Socket connection attempt");
-    const session = socket.request.session;
-
-    console.log("Session data:", session);
-    console.log("Session email:", session?.email);
-
-    // Temporarily disabled for testing - uncomment after authentication is working
-    if (!session?.email) {
-      console.log("Unauthenticated connection attempt - allowing for testing");
-      socket.emit("auth_error", {
-        message: "Not authenticated - please log in first",
-      });
-      socket.disconnect();
+    // Authenticate the socket connection
+    const user = await authenticateSocket(socket, users);
+    if (!user) {
+      // Authentication failed, socket already disconnected
       return;
     }
 
-    console.log(`Client connected: ${session?.email || "anonymous"}`);
+    // Attach user to socket for easy access
+    socket.user = user;
+    console.log(`Client connected: ${user.email} (${user.role})`);
 
-    // Send welcome message with teacher's prompt
-    try {
-      const teacher = await users.findOne({ role: "teacher" });
-      const prompt = teacher?.prompt;
-
-      if (prompt) {
-        socket.emit("response", {
-          message: "Welcome! Your teacher has set the prompt to be: " + prompt,
-        });
-      } else {
-        socket.emit("response", {
-          message: "Welcome! No prompt has been set by your teacher yet.",
-        });
-      }
-    } catch (error) {
-      console.error("Error fetching teacher prompt:", error);
-    }
+    // Send personalized welcome message
+    await sendWelcomeMessage(socket, users);
 
     // Handle client disconnect
     socket.on("disconnect", () => {
-      console.log("Client disconnected");
+      const user = socket.user;
+      console.log(
+        `Client disconnected: ${user?.email || "unknown"} (${
+          user?.role || "unknown"
+        })`
+      );
     });
 
     // Handle room joining
     socket.on("join", (data) => {
       const room = data.room;
+      const user = socket.user;
+
       socket.join(room);
-      socket.to(room).emit("status", { msg: "A user has joined the room." });
+      socket.to(room).emit("status", {
+        msg: `${user?.name || "A user"} (${
+          user?.role || "unknown"
+        }) has joined the room.`,
+      });
+      console.log(`${user?.email} joined room: ${room}`);
     });
 
     // Handle room leaving
     socket.on("leave", (data) => {
       const room = data.room;
+      const user = socket.user;
+
       socket.leave(room);
-      socket.to(room).emit("status", { msg: "A user has left the room." });
+      socket.to(room).emit("status", {
+        msg: `${user?.name || "A user"} (${
+          user?.role || "unknown"
+        }) has left the room.`,
+      });
+      console.log(`${user?.email} left room: ${room}`);
     });
 
     // Handle chat messages
     socket.on("message", async (data) => {
-      const email = session?.email || "anonymous";
+      // Check if user is authenticated and has student role
+
+      const user = socket.user;
+      const email = user.email;
 
       try {
         const teacher = await users.findOne({ role: "teacher" });
@@ -87,19 +162,17 @@ export function initializeSocketHandlers(
         const parsedData = JSON.parse(data);
         const userMessage = parsedData.message || "";
 
-        // Save student message to database (only if authenticated)
-        if (session?.email) {
-          const studentMessage = {
-            message: userMessage,
-            timestamp: new Date(),
-            email,
-            prompt,
-            sender: "student",
-          };
-          await messages.insertOne(studentMessage);
-        }
+        // Save student message to database
+        const studentMessage = {
+          message: userMessage,
+          timestamp: new Date(),
+          email,
+          prompt,
+          sender: "student",
+        };
+        await messages.insertOne(studentMessage);
 
-        console.log(`Message from user: ${userMessage}`);
+        console.log(`Message from user (${user.role}): ${userMessage}`);
         socket.emit("status", { message: "Assistant is thinking..." });
 
         // Call OpenAI API for AI response
@@ -121,23 +194,21 @@ export function initializeSocketHandlers(
         );
         console.log("AI Response:", assistantResponse);
 
-        // Save bot message to database (only if authenticated)
-        if (session?.email) {
-          const botMessage = {
-            message: assistantResponse.response,
-            timestamp: new Date(),
-            email,
-            prompt,
-            sender: "bot",
-          };
-          await messages.insertOne(botMessage);
+        // Save bot message to database
+        const botMessage = {
+          message: assistantResponse.response,
+          timestamp: new Date(),
+          email,
+          prompt,
+          sender: "bot",
+        };
+        await messages.insertOne(botMessage);
 
-          // Update user's brain points
-          await users.updateOne(
-            { email },
-            { $inc: { brain_points: parseInt(assistantResponse.points) } }
-          );
-        }
+        // Update user's brain points
+        await users.updateOne(
+          { email },
+          { $inc: { brain_points: parseInt(assistantResponse.points) } }
+        );
 
         // Send response back to the user
         socket.emit("response", {

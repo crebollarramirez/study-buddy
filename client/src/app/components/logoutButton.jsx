@@ -1,9 +1,10 @@
 "use client";
 
+import { API_URL } from "@/constants";
+
 const logoutButton = () => {
     const handleLogout = () => {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000"; // Replace with your API URL
-        window.location.href = `${API_URL}/logout`;
+        window.location.href = `${API_URL}/auth/logout`;
     };
 
     return (

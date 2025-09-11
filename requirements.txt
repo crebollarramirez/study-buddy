@@ -1,9 +1,0 @@
-flask
-openai
-authlib
-requests
-python-dotenv
-pymongo
-dnspython
-flask-socketio
-eventlet

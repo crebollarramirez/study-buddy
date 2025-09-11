@@ -8,7 +8,7 @@ export default function Register() {
 
   const handleSubmit = (e) => {
     e.preventDefault(); // Prevent the default form submission
-    window.location.href = `${API_URL}/register?role=${role}`;
+    window.location.href = `${API_URL}/auth/register?role=${role}`;
   };
 
   return (

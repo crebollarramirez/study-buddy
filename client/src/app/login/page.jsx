@@ -6,7 +6,7 @@ export default function Login() {
   const handleSubmit = (e) => {
     e.preventDefault(); // Prevent the default form submission
     // Redirect to the backend Google OAuth login endpoint
-    window.location.href = `${API_URL}/login`;
+    window.location.href = `${API_URL}/auth/login`;
   };
   return (
     <div className="bg-white/70 h-screen w-screen flex justify-center items-center">

@@ -1,52 +1,50 @@
 import passport from "passport";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import {
+  Strategy as GoogleStrategy,
+  Strategy,
+  VerifyCallback,
+} from "passport-google-oauth20";
 import { Collection } from "mongodb";
+import { makeGoogleVerify } from "./googleVerify";
 
+/**
+ * Configure Passport.js with Google OAuth strategy and session handlers.
+ *
+ * This function registers a `GoogleStrategy` that uses the provided
+ * `users` collection via `makeGoogleVerify(users)` to verify Google profiles.
+ * It also wires `serializeUser` / `deserializeUser` for session support.
+ *
+ * Notes:
+ *  - Call this once during app startup after creating your MongoDB client
+ *    and obtaining the `users` collection.
+ *  - `serializeUser` stores the user's email in the session. `deserializeUser`
+ *    looks up the full user document from `users` by email and attaches it to
+ *    `req.user` for subsequent requests.
+ *
+ * @param users - MongoDB `Collection` used to find/insert user documents.
+ */
 export function configurePassport(users: Collection) {
   passport.use(
     new GoogleStrategy(
       {
         clientID: process.env.GOOGLE_CLIENT_ID || "",
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
-        callbackURL: "http://localhost:3000/auth/google/callback", // Explicit localhost
+        callbackURL: process.env.BACKEND_URL + "/auth/google/callback",
       },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          const email = profile.emails?.[0]?.value;
-          const name = profile.displayName;
-
-          if (!email) {
-            return done(new Error("No email found in profile"), undefined);
-          }
-
-          // Check if user exists
-          const existingUser = await users.findOne({ email });
-
-          const userData = {
-            email,
-            name,
-            googleId: profile.id,
-            isNewUser: !existingUser,
-          };
-
-          return done(null, userData);
-        } catch (error) {
-          return done(error, undefined);
-        }
-      }
+      makeGoogleVerify(users)
     )
   );
 
-  passport.serializeUser((user: any, done) => {
-    done(null, user.email);
-  });
+  // Store a minimal identifier in the session (email). Keep the session small.
+  passport.serializeUser((user: any, done) => done(null, user.email));
 
+  // Resolve the full user object for each request from the users collection.
   passport.deserializeUser(async (email: string, done) => {
     try {
       const user = await users.findOne({ email });
       done(null, user);
-    } catch (error) {
-      done(error, null);
+    } catch (e) {
+      done(e);
     }
   });
 }
