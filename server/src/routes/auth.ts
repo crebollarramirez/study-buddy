@@ -7,6 +7,14 @@ interface AuthRouter {
   initializeAuthRoutes: (users: Collection) => void;
 }
 
+interface User {
+  email: string;
+  name: string;
+  googleId: string;
+  isNewUser: boolean;
+  role: string;
+}
+
 /**
  * Create and return an authentication router with lazy initialization.
  *
@@ -46,27 +54,29 @@ const createAuthRouter = (): AuthRouter => {
   router.get("/register", (req: Request, res: Response) => {
     const role = (req.query.role as string) || "student";
 
-    // Store the intended role and action in session as hints
-    req.session.role = role;
-    req.session.authAction = "register";
-
     console.log(`Registration initiated for role: ${role}`);
-    res.redirect("google");
+    // Pass role as query parameter to Google OAuth
+    res.redirect(`google?role=${encodeURIComponent(role)}`);
   });
 
   router.get("/login", (req: Request, res: Response) => {
     // Set action as hint, but callback will handle user creation if needed
-    req.session.authAction = "login";
 
     console.log("Login initiated");
     res.redirect("google");
   });
 
   // Google OAuth routes
-  router.get(
-    "/google",
-    passport.authenticate("google", { scope: ["profile", "email"] })
-  );
+  router.get("/google", (req: Request, res: Response, next) => {
+    // Extract role from query parameter and pass it through OAuth state
+    const role = (req.query.role as string) || "student";
+
+    // Use Passport's state parameter to preserve the role through OAuth
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+      state: JSON.stringify({ role }),
+    })(req, res, next);
+  });
 
   router.get(
     "/google/callback",
@@ -75,18 +85,28 @@ const createAuthRouter = (): AuthRouter => {
       try {
         // Passport has already authenticated and set req.user
         // The deserializeUser function should have loaded the full user data
-        const user = req.user as any;
+        const user = req.user as User;
 
         console.log("=== AUTH CALLBACK DEBUG ===");
         console.log("1. Authenticated user:", user?.email);
         console.log("2. User data:", user);
 
-        // If this is a new user from OAuth that doesn't exist in our DB,
-        // we need to create them first
-        if (!user._id) {
-          const authAction = req.session.authAction || "login";
-          const role = req.session.role || "student";
+        // Extract role from OAuth state parameter
+        let role = "student"; // default
+        try {
+          const state = req.query.state as string;
+          if (state) {
+            const stateData = JSON.parse(state);
+            role = stateData.role || "student";
+            console.log(`Role from OAuth state: ${role}`);
+          }
+        } catch (error) {
+          console.log(
+            "Could not parse state parameter, using default role: student"
+          );
+        }
 
+        if (user.isNewUser) {
           console.log(`3. Creating new user: ${user.email} with role: ${role}`);
 
           const newUser = {
@@ -103,10 +123,6 @@ const createAuthRouter = (): AuthRouter => {
         } else {
           console.log("3. Existing user logged in successfully");
         }
-
-        // Clear temporary session flags
-        delete req.session.authAction;
-        delete req.session.role;
 
         console.log("4. Redirecting to client");
         console.log("=== AUTH CALLBACK END ===");

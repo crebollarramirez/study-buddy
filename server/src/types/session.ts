@@ -5,6 +5,5 @@ declare module "express-session" {
     email?: string;
     name?: string;
     role?: string;
-    authAction?: "login" | "register";
   }
 }
