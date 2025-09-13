@@ -53,6 +53,22 @@ export async function createTestApp() {
     done(null, null); // For testing unauthenticated state
   });
 
+  // Mock Google Strategy for tests
+  const GoogleStrategy = require("passport-google-oauth20").Strategy;
+  passport.use(
+    new GoogleStrategy(
+      {
+        clientID: "mock-client-id",
+        clientSecret: "mock-client-secret",
+        callbackURL: "/auth/google/callback",
+      },
+      (accessToken: any, refreshToken: any, profile: any, done: any) => {
+        // This won't actually be called in tests, but we need it to register the strategy
+        done(null, profile);
+      }
+    )
+  );
+
   // Auth routes with mock collection
   const authRouter = createAuthRouter();
   authRouter.initializeAuthRoutes(mockCollection as any);
