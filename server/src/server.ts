@@ -8,6 +8,7 @@ import { createServer } from "http";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import passport from "passport";
+import { Pool } from "pg";
 import { configurePassport } from "./config/passport";
 import { requireAuth, requireRole } from "./middleware";
 import { initializeSocketHandlers } from "./socket/socketHandlers";
@@ -25,6 +26,22 @@ const mongoClient = new MongoClient(MONGO_URL);
 let db: Db;
 let users: Collection;
 let messages: Collection;
+
+// PostgreSQL setup
+const pool = new Pool({
+  user: process.env.PG_USER,
+  host: process.env.PG_HOST,
+  database: process.env.PG_DATABASE,
+  port: parseInt(process.env.PG_PORT || "5432"),
+});
+
+pool.query("SELECT NOW()", (err, res) => {
+  if (err) {
+    console.error("❌ Error connecting to database:", err.stack);
+  } else {
+    console.log("✅ Connected Postgres DB:", res.rows[0].now);
+  }
+});
 
 // OpenAI setup
 const openai = new OpenAI({
@@ -106,7 +123,7 @@ async function initializeApp() {
     app.use("/auth", authRouter.router);
 
     // Initialize Socket.IO handlers with database collections
-    initializeSocketHandlers(io, users, messages, openai);
+    initializeSocketHandlers(io, users, pool, openai);
 
     console.log("Application initialized successfully");
   } catch (error) {
@@ -174,8 +191,6 @@ app.get(
     }
   }
 );
-
-
 
 app.post(
   "/bot/set-prompt",
