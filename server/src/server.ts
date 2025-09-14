@@ -13,6 +13,7 @@ import { configurePassport } from "./config/passport";
 import { requireAuth, requireRole } from "./middleware";
 import { initializeSocketHandlers } from "./socket/socketHandlers";
 import createAuthRouter from "./routes/auth";
+import { createBookRouter } from "./routes/book";
 import "./types/session";
 
 // Load environment variables from .env file
@@ -91,6 +92,7 @@ io.engine.use(sessionMiddleware);
 
 // Initialize auth router
 const authRouter = createAuthRouter();
+const bookRouter = createBookRouter();
 
 // Initialize MongoDB connection
 async function initializeDatabase() {
@@ -121,6 +123,7 @@ async function initializeApp() {
 
     // Mount auth routes with /auth prefix
     app.use("/auth", authRouter.router);
+    app.use("/book", bookRouter.router);
 
     // Initialize Socket.IO handlers with database collections
     initializeSocketHandlers(io, users, pool, openai);
