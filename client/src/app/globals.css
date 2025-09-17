@@ -1,13 +1,8 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-@font-face {
-  font-family: 'PixelifySans';
-  src: url('../../public/brain_pixel.png') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
-
+/* Handjet is loaded via next/font in layout.js */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -16,14 +11,6 @@
   --cplatinum: #CFD8D7;
   --cgreen: #B5C9C3;
   --cpink: #CAB1BD;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --message-background: var(--cgray);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -36,5 +23,5 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: PixelifySans, Arial, Helvetica, sans-serif;
+  font-family: var(--font-handjet), Arial, Helvetica, sans-serif;
 }

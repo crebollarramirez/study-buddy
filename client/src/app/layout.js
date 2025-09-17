@@ -1,14 +1,9 @@
-import { Geist, Geist_Mono } from "next/font/google";
+import { Handjet } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const handjet = Handjet({
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  variable: "--font-handjet",
 });
 
 export const metadata = {
@@ -20,9 +15,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${handjet.className} antialiased min-h-screen w-screen bg-[#EFF6F7]`}
       >
-        {children}
+        <div className="min-h-screen w-screen">{children}</div>
       </body>
     </html>
   );

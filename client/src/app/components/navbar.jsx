@@ -1,28 +1,40 @@
 "use client";
 import LogoutButton from "./logoutButton";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-export default function NavBar({ setActiveComponent, activeComponent }) {
+export default function NavBar() {
+  const pathname = usePathname();
+  const isActive = (href) => {
+    if (href === "/classes") {
+      // Highlight classes button for both /classes and any /chat/* page
+      return pathname === "/classes" || pathname.startsWith("/chat/");
+    }
+    if (href === "/home") {
+      // Highlight home button for /home, /progress, and /leaderboard pages
+      return pathname === "/home" || pathname === "/progress" || pathname === "/leaderboard";
+    }
+    return pathname === href;
+  };
+  const activeClass = (href) =>
+    isActive(href)
+      ? "bg-[#8AC0A8] text-black"
+      : "text-gray-700 hover:bg-gray-200";
+
   return (
-    <div className="flex justify-between items-center h-[5%] w-full px-4">
-      <div className="links flex flex-row items-center justify-center h-full">
-        <button 
-          className={`bg-blue-500/80 text-white p-2 rounded transition-all duration-300 hover:bg-blue-600 hover:scale-105 hover:shadow-lg
-            ${activeComponent === "chat" ? "bg-blue-600/90" : ""}`}
-          onClick={() => setActiveComponent && setActiveComponent("chat")}
-        >
-          Home
-        </button>
-
-        <button 
-          className={`ml-2 bg-blue-500/80 text-white p-2 rounded transition-all duration-300 hover:bg-blue-600 hover:scale-105 hover:shadow-lg
-            ${activeComponent === "shop" ? "bg-blue-600/90" : ""}`}
-          onClick={() => setActiveComponent && setActiveComponent("shop")}
-        >
-          Shop
-        </button>
+    <div className="flex flex-col items-center justify-between h-full w-16 bg-white py-4 border-r">
+      <div className="flex flex-col items-center gap-4">
+        <Link href="/home" className={`w-10 h-10 rounded-md flex items-center justify-center transition-colors ${activeClass("/home")}`}>
+          <span className="text-xl">🏠</span>
+        </Link>
+        <Link href="/classes" className={`w-10 h-10 rounded-md flex items-center justify-center transition-colors ${activeClass("/classes")}`}>
+          <span className="text-xl">💬</span>
+        </Link>
+        <Link href="/shop" className={`w-10 h-10 rounded-md flex items-center justify-center transition-colors ${activeClass("/shop")}`}>
+          <span className="text-xl">🏪</span>
+        </Link>
       </div>
-
-      <div className="logout">
+      <div className="">
         <LogoutButton />
       </div>
     </div>
