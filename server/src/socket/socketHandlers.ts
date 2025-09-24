@@ -1,6 +1,6 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
-import { Collection } from "mongodb";
 import OpenAI from "openai";
+import { PostgresDatabase } from "../database/PostgresDatabase";
 
 interface CustomSocket extends Socket {
   request: any;
@@ -8,8 +8,7 @@ interface CustomSocket extends Socket {
 
 export function initializeSocketHandlers(
   io: SocketIOServer,
-  users: Collection,
-  messages: Collection,
+  database: PostgresDatabase,
   openai: OpenAI
 ) {
   io.on("connection", async (socket: CustomSocket) => {
@@ -33,8 +32,7 @@ export function initializeSocketHandlers(
 
     // Send welcome message with teacher's prompt
     try {
-      const teacher = await users.findOne({ role: "teacher" });
-      const prompt = teacher?.prompt;
+      const prompt = await database.getTeacherPrompt();
 
       if (prompt) {
         socket.emit("response", {
@@ -73,8 +71,7 @@ export function initializeSocketHandlers(
       const email = session?.email || "anonymous";
 
       try {
-        const teacher = await users.findOne({ role: "teacher" });
-        const prompt = teacher?.prompt;
+        const prompt = await database.getTeacherPrompt();
 
         if (!prompt) {
           console.log("No prompt set by teacher");
@@ -87,17 +84,7 @@ export function initializeSocketHandlers(
         const parsedData = JSON.parse(data);
         const userMessage = parsedData.message || "";
 
-        // Save student message to database (only if authenticated)
-        if (session?.email) {
-          const studentMessage = {
-            message: userMessage,
-            timestamp: new Date(),
-            email,
-            prompt,
-            sender: "student",
-          };
-          await messages.insertOne(studentMessage);
-        }
+        // Student messages are intentionally not persisted while we complete the PostgreSQL migration.
 
         console.log(`Message from user: ${userMessage}`);
         socket.emit("status", { message: "Assistant is thinking..." });
@@ -123,20 +110,10 @@ export function initializeSocketHandlers(
 
         // Save bot message to database (only if authenticated)
         if (session?.email) {
-          const botMessage = {
-            message: assistantResponse.response,
-            timestamp: new Date(),
-            email,
-            prompt,
-            sender: "bot",
-          };
-          await messages.insertOne(botMessage);
-
-          // Update user's brain points
-          await users.updateOne(
-            { email },
-            { $inc: { brain_points: parseInt(assistantResponse.points) } }
-          );
+          const incrementValue = Number.parseInt(assistantResponse.points, 10);
+          if (!Number.isNaN(incrementValue)) {
+            await database.incrementBrainPoints(email, incrementValue);
+          }
         }
 
         // Send response back to the user

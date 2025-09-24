@@ -1,8 +1,23 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
-import { Collection } from "mongodb";
+import { PostgresDatabase } from "../database/PostgresDatabase";
 
-export function configurePassport(users: Collection) {
+function extractNames(profile: any): { firstName: string; lastName: string } {
+  const firstName =
+    profile.name?.givenName ||
+    profile.displayName?.split(" ")?.[0] ||
+    profile.emails?.[0]?.value?.split("@")[0] ||
+    "";
+
+  const lastName =
+    profile.name?.familyName ||
+    profile.displayName?.split(" ")?.slice(1).join(" ") ||
+    "";
+
+  return { firstName, lastName };
+}
+
+export function configurePassport(database: PostgresDatabase) {
   passport.use(
     new GoogleStrategy(
       {
@@ -19,12 +34,15 @@ export function configurePassport(users: Collection) {
             return done(new Error("No email found in profile"), undefined);
           }
 
-          // Check if user exists
-          const existingUser = await users.findOne({ email });
+          const { firstName, lastName } = extractNames(profile);
+
+          const existingUser = await database.findUserByEmail(email);
 
           const userData = {
             email,
             name,
+            firstName,
+            lastName,
             googleId: profile.id,
             isNewUser: !existingUser,
           };
@@ -43,7 +61,7 @@ export function configurePassport(users: Collection) {
 
   passport.deserializeUser(async (email: string, done) => {
     try {
-      const user = await users.findOne({ email });
+      const user = await database.findUserByEmail(email);
       done(null, user);
     } catch (error) {
       done(error, null);

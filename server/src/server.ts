@@ -1,8 +1,6 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import session from "express-session";
-import MongoStore from "connect-mongo";
-import { MongoClient, Db, Collection } from "mongodb";
 import { Server } from "socket.io";
 import { createServer } from "http";
 import dotenv from "dotenv";
@@ -11,6 +9,7 @@ import passport from "passport";
 import { configurePassport } from "./config/passport";
 import { initializeSocketHandlers } from "./socket/socketHandlers";
 import "./types/session";
+import { PostgresDatabase } from "./database/PostgresDatabase";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -25,7 +24,7 @@ console.log(
   "GOOGLE_CLIENT_SECRET:",
   process.env.GOOGLE_CLIENT_SECRET ? "✓ Loaded" : "✗ Missing"
 );
-console.log("MONGO_URL:", process.env.MONGO_URL);
+console.log("POSTGRES_URL:", process.env.POSTGRES_URL ? "✓ Loaded" : "✗ Missing");
 console.log("CLIENT:", process.env.CLIENT);
 console.log("SECRET_KEY:", process.env.SECRET_KEY ? "✓ Loaded" : "✗ Missing");
 console.log(
@@ -37,12 +36,15 @@ console.log("=== End Debug ===");
 const app = express();
 const server = createServer(app);
 
-// MongoDB setup
-const MONGO_URL = process.env.MONGO_URL || "";
-const mongoClient = new MongoClient(MONGO_URL);
-let db: Db;
-let users: Collection;
-let messages: Collection;
+// PostgreSQL setup
+const POSTGRES_URL = process.env.POSTGRES_URL || "";
+
+if (!POSTGRES_URL) {
+  console.error("POSTGRES_URL environment variable is not configured.");
+  process.exit(1);
+}
+
+const database = new PostgresDatabase(POSTGRES_URL);
 
 // OpenAI setup
 const openai = new OpenAI({
@@ -58,19 +60,19 @@ const io = new Server(server, {
 });
 
 // Session configuration
+const sessionStore = new session.MemoryStore();
+
 const sessionMiddleware = session({
   secret: process.env.SECRET_KEY || "TEST",
   resave: false,
   saveUninitialized: false,
-  store: MongoStore.create({
-    mongoUrl: MONGO_URL,
-  }),
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 24 hours
     httpOnly: true,
     secure: false, // Set to true in production with HTTPS
     sameSite: "lax",
   },
+  store: sessionStore,
 });
 
 // Middleware
@@ -98,23 +100,20 @@ const loginRequired = (req: Request, res: Response, next: any) => {
   next();
 };
 
-// Initialize MongoDB connection
+// Initialize PostgreSQL connection
 async function initializeDatabase() {
   try {
-    await mongoClient.connect();
-    db = mongoClient.db("StudyBuddy");
-    users = db.collection("users");
-    messages = db.collection("messages");
+    await database.initialize();
 
     // Configure Passport after database connection
-    configurePassport(users);
+    configurePassport(database);
 
     // Initialize Socket.IO handlers with database collections
-    initializeSocketHandlers(io, users, messages, openai);
+    initializeSocketHandlers(io, database, openai);
 
-    console.log("Connected to MongoDB");
+    console.log("Connected to PostgreSQL");
   } catch (error) {
-    console.error("Failed to connect to MongoDB:", error);
+    console.error("Failed to connect to PostgreSQL:", error);
     process.exit(1);
   }
 }
@@ -127,7 +126,7 @@ app.get("/", loginRequired, (req: Request, res: Response) => {
 
 // Note: OAuth routes with passport.js
 app.get("/register", (req: Request, res: Response) => {
-  const role = (req.query.role as string) || "Student";
+  const role = ((req.query.role as string) || "student").toLowerCase();
   req.session.role = role;
   req.session.authAction = "register";
   res.redirect("/auth/google");
@@ -154,21 +153,23 @@ app.get(
     console.log("THIS IS THE AUTH ACTION: ", authAction);
 
     if (authAction === "register") {
-      const role = req.session.role || "Student";
+      const role = (req.session.role || "student").toLowerCase();
 
       if (user.isNewUser) {
-        // Create new user in MongoDB
-        const newUser = {
-          email: user.email,
-          name: user.name,
-          role: role,
-          brain_points: 0,
-          ...(role === "teacher" ? { prompt: null } : {}),
-        };
-
         try {
-          const result = await users.insertOne(newUser);
-          console.log("user_id: ", result.insertedId);
+          const firstName = user.firstName || user.name?.split(" ")?.[0] || "";
+          const lastName =
+            user.lastName || user.name?.split(" ")?.slice(1).join(" ") || "";
+
+          await database.createUser({
+            firstname: firstName,
+            lastname: lastName,
+            google_email: user.email,
+            role,
+            brain_points: 0,
+            prompt: null,
+          });
+
           console.log(`New user registered: ${user.email} as ${role}`);
           return res.redirect("http://localhost:3001/login");
         } catch (error) {
@@ -183,14 +184,14 @@ app.get(
     // Login flow
     console.log("You are logged in as... ", user.email);
 
-    const existingUser = await users.findOne({ email: user.email });
+    const existingUser = await database.findUserByEmail(user.email);
     if (!existingUser) {
       return res.status(404).send("User not found");
     }
 
     // Store user info in session
-    req.session.email = user.email;
-    req.session.name = user.name;
+    req.session.email = existingUser.google_email;
+    req.session.name = `${existingUser.firstname} ${existingUser.lastname}`.trim();
     req.session.role = existingUser.role;
 
     console.log("Session saved:", req.session);
@@ -210,7 +211,10 @@ app.get("/logout", (req: Request, res: Response) => {
 app.get("/brain_points", loginRequired, async (req: Request, res: Response) => {
   try {
     const email = req.session.email;
-    const user = await users.findOne({ email });
+    if (!email) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+    const user = await database.findUserByEmail(email);
     if (user) {
       res.json({ brain_points: user.brain_points });
     } else {
@@ -223,11 +227,14 @@ app.get("/brain_points", loginRequired, async (req: Request, res: Response) => {
 
 app.get("/students", async (req: Request, res: Response) => {
   try {
-    const studentList = await users
-      .find({ role: "student" })
-      .project({ email: 1, name: 1, brain_points: 1 })
-      .toArray();
-    res.json({ students: studentList });
+    const studentList = await database.listStudents();
+    res.json({
+      students: studentList.map((student) => ({
+        email: student.google_email,
+        name: `${student.firstname} ${student.lastname}`.trim(),
+        brain_points: student.brain_points,
+      })),
+    });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
@@ -239,7 +246,7 @@ app.get("/account-type", (req: Request, res: Response) => {
     return res.status(401).json({ error: "User not authenticated" });
   }
 
-  users.findOne({ email }).then((user) => {
+  database.findUserByEmail(email).then((user) => {
     if (user) {
       res.json({ account_type: user.role });
     } else {
@@ -261,12 +268,12 @@ app.post("/bot/set-prompt", async (req: Request, res: Response) => {
   }
 
   try {
-    const user = await users.findOne({ email });
+    const user = await database.findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    await users.updateOne({ email }, { $set: { prompt } });
+    await database.updateUserPrompt(email, prompt);
     res.json({ status: "success", message: "Prompt updated successfully" });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
@@ -281,7 +288,7 @@ app.get("/bot/get-prompt", async (req: Request, res: Response) => {
   }
 
   try {
-    const user = await users.findOne({ email });
+    const user = await database.findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
@@ -305,12 +312,12 @@ app.delete("/bot/delete-prompt", async (req: Request, res: Response) => {
   }
 
   try {
-    const user = await users.findOne({ email });
+    const user = await database.findUserByEmail(email);
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    await users.updateOne({ email }, { $set: { prompt: null } });
+    await database.updateUserPrompt(email, null);
     res.json({ status: "success", message: "Prompt deleted successfully" });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
@@ -319,26 +326,7 @@ app.delete("/bot/delete-prompt", async (req: Request, res: Response) => {
 
 app.get("/messages", async (req: Request, res: Response) => {
   try {
-    const allMessages = await messages.find({}).toArray();
-    const groupedMessages: { [email: string]: any[] } = {};
-
-    allMessages.forEach((message) => {
-      const email = message.email;
-      const messageData = {
-        message: message.message,
-        timestamp: message.timestamp,
-        prompt: message.prompt,
-        sender: message.sender,
-      };
-
-      if (groupedMessages[email]) {
-        groupedMessages[email].push(messageData);
-      } else {
-        groupedMessages[email] = [messageData];
-      }
-    });
-
-    res.json({ messages: groupedMessages });
+    res.json({ messages: {} });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
