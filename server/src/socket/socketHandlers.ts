@@ -1,16 +1,16 @@
 import { Server as SocketIOServer, Socket } from "socket.io";
-import { Collection } from "mongodb";
 import OpenAI from "openai";
+import { Database, DatabaseUser } from "../database";
 
 interface CustomSocket extends Socket {
   request: any;
-  user?: any; // Add user property for authenticated user
+  user?: DatabaseUser; // Add user property for authenticated user
 }
 
 // Socket-specific authentication function
 async function authenticateSocket(
   socket: CustomSocket,
-  users: Collection
+  database: Database
 ): Promise<any | null> {
   console.log("Socket connection attempt");
   const session = socket.request.session;
@@ -32,7 +32,7 @@ async function authenticateSocket(
 
   // Get full user data from database using Passport's stored user ID
   try {
-    const user = await users.findOne({ email: userEmail });
+    const user = await database.getUserByEmail(userEmail);
     if (!user) {
       console.log("User not found in database:", userEmail);
       socket.emit("auth_error", {
@@ -55,10 +55,9 @@ async function authenticateSocket(
 }
 
 // Helper function to send welcome message based on user role
-async function sendWelcomeMessage(socket: CustomSocket, users: Collection) {
+async function sendWelcomeMessage(socket: CustomSocket, database: Database) {
   try {
-    const teacher = await users.findOne({ role: "teacher" });
-    const prompt = teacher?.prompt;
+    const prompt = await database.getTeacherPrompt();
     const user = socket.user;
 
     if (user.role === "student") {
@@ -83,13 +82,12 @@ async function sendWelcomeMessage(socket: CustomSocket, users: Collection) {
 
 export function initializeSocketHandlers(
   io: SocketIOServer,
-  users: Collection,
-  messages: Collection,
+  database: Database,
   openai: OpenAI
 ) {
   io.on("connection", async (socket: CustomSocket) => {
     // Authenticate the socket connection
-    const user = await authenticateSocket(socket, users);
+    const user = await authenticateSocket(socket, database);
     if (!user) {
       // Authentication failed, socket already disconnected
       return;
@@ -100,7 +98,7 @@ export function initializeSocketHandlers(
     console.log(`Client connected: ${user.email} (${user.role})`);
 
     // Send personalized welcome message
-    await sendWelcomeMessage(socket, users);
+    await sendWelcomeMessage(socket, database);
 
     // Handle client disconnect
     socket.on("disconnect", () => {
@@ -148,8 +146,7 @@ export function initializeSocketHandlers(
       const email = user.email;
 
       try {
-        const teacher = await users.findOne({ role: "teacher" });
-        const prompt = teacher?.prompt;
+        const prompt = await database.getTeacherPrompt();
 
         if (!prompt) {
           console.log("No prompt set by teacher");
@@ -161,16 +158,6 @@ export function initializeSocketHandlers(
 
         const parsedData = JSON.parse(data);
         const userMessage = parsedData.message || "";
-
-        // Save student message to database
-        const studentMessage = {
-          message: userMessage,
-          timestamp: new Date(),
-          email,
-          prompt,
-          sender: "student",
-        };
-        await messages.insertOne(studentMessage);
 
         console.log(`Message from user (${user.role}): ${userMessage}`);
         socket.emit("status", { message: "Assistant is thinking..." });
@@ -194,21 +181,10 @@ export function initializeSocketHandlers(
         );
         console.log("AI Response:", assistantResponse);
 
-        // Save bot message to database
-        const botMessage = {
-          message: assistantResponse.response,
-          timestamp: new Date(),
-          email,
-          prompt,
-          sender: "bot",
-        };
-        await messages.insertOne(botMessage);
-
         // Update user's brain points
-        await users.updateOne(
-          { email },
-          { $inc: { brain_points: parseInt(assistantResponse.points) } }
-        );
+        const points = Number.parseInt(assistantResponse.points, 10);
+        const increment = Number.isNaN(points) ? 0 : points;
+        await database.incrementBrainPoints(email, increment);
 
         // Send response back to the user
         socket.emit("response", {

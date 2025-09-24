@@ -4,26 +4,26 @@ import {
   Strategy,
   VerifyCallback,
 } from "passport-google-oauth20";
-import { Collection } from "mongodb";
 import { makeGoogleVerify } from "./googleVerify";
+import { Database } from "../database";
 
 /**
  * Configure Passport.js with Google OAuth strategy and session handlers.
  *
- * This function registers a `GoogleStrategy` that uses the provided
- * `users` collection via `makeGoogleVerify(users)` to verify Google profiles.
+ * This function registers a `GoogleStrategy` that uses the provided database
+ * via `makeGoogleVerify(database)` to verify Google profiles.
  * It also wires `serializeUser` / `deserializeUser` for session support.
  *
  * Notes:
- *  - Call this once during app startup after creating your MongoDB client
- *    and obtaining the `users` collection.
+ *  - Call this once during app startup after creating your `Database`
+ *    instance.
  *  - `serializeUser` stores the user's email in the session. `deserializeUser`
- *    looks up the full user document from `users` by email and attaches it to
- *    `req.user` for subsequent requests.
+ *    looks up the full user document from the database by email and attaches
+ *    it to `req.user` for subsequent requests.
  *
- * @param users - MongoDB `Collection` used to find/insert user documents.
+ * @param database - Database abstraction used to find/insert user records.
  */
-export function configurePassport(users: Collection) {
+export function configurePassport(database: Database) {
   passport.use(
     new GoogleStrategy(
       {
@@ -31,7 +31,7 @@ export function configurePassport(users: Collection) {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
         callbackURL: process.env.BACKEND_URL + "/auth/google/callback",
       },
-      makeGoogleVerify(users)
+      makeGoogleVerify(database)
     )
   );
 
@@ -41,7 +41,7 @@ export function configurePassport(users: Collection) {
   // Resolve the full user object for each request from the users collection.
   passport.deserializeUser(async (email: string, done) => {
     try {
-      const user = await users.findOne({ email });
+      const user = await database.getUserByEmail(email);
       done(null, user);
     } catch (e) {
       done(e);
