@@ -14,7 +14,7 @@ export type GoogleProfile = {
  * performs a lookup on the provided `Database` instance, and returns
  * a `userData` object via Passport's `done` callback:
  *  - email: string (from profile)
- *  - name: profile.displayName
+ *  - fullName: profile.displayName
  *  - googleId: profile.id
  *  - isNewUser: boolean (true when no existing user is found)
  *  - role: preserved from existing user or `"Student"` by default
@@ -46,7 +46,7 @@ export const makeGoogleVerify =
       const existingUser = await database.getUserByEmail(email);
       const userData = {
         email,
-        name: existingUser?.name ?? profile.displayName,
+        fullName: existingUser?.fullName ?? profile.displayName,
         googleId: profile.id,
         isNewUser: !existingUser,
         role: existingUser?.role ?? "student",

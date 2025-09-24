@@ -89,7 +89,7 @@ describe("Authentication Routes", () => {
       const mockReq = {
         user: {
           email: "newstudent@test.com",
-          name: "New Student",
+          fullName: "New Student",
           isNewUser: true,
         },
         query: {
@@ -120,7 +120,7 @@ describe("Authentication Routes", () => {
         if (user.isNewUser) {
           const newUser = {
             email: user.email,
-            name: user.name,
+            fullName: user.fullName,
             role: role,
             brain_points: 0,
             ...(role === "teacher" ? { prompt: null } : {}),
@@ -134,7 +134,7 @@ describe("Authentication Routes", () => {
         expect(mockCollection.insertOne).toHaveBeenCalledWith(
           expect.objectContaining({
             email: "newstudent@test.com",
-            name: "New Student",
+            fullName: "New Student",
             role: "student",
             brain_points: 0,
             createdAt: expect.any(Date),
@@ -161,7 +161,7 @@ describe("Authentication Routes", () => {
       // Simulate the user object that Passport would provide after successful OAuth
       const user = {
         email: "newteacher@test.com",
-        name: "New Teacher",
+        fullName: "New Teacher",
         googleId: "google123",
         isNewUser: true,
       };
@@ -183,7 +183,7 @@ describe("Authentication Routes", () => {
       if (user.isNewUser) {
         const newUser = {
           email: user.email,
-          name: user.name,
+          fullName: user.fullName,
           role: role,
           brain_points: 0,
           ...(role === "teacher" ? { prompt: null } : {}),
@@ -196,7 +196,7 @@ describe("Authentication Routes", () => {
       // Verify new teacher was inserted with teacher-specific fields
       expect(mockCollection.insertOne).toHaveBeenCalledWith({
         email: "newteacher@test.com",
-        name: "New Teacher",
+        fullName: "New Teacher",
         role: "teacher", // Should use role from state parameter
         brain_points: 0,
         prompt: null, // Teacher-specific field
@@ -210,7 +210,7 @@ describe("Authentication Routes", () => {
       // Test the callback logic for an existing user
       const user = {
         email: "existing@test.com",
-        name: "Existing User",
+        fullName: "Existing User",
         isNewUser: false, // Key difference - this is an existing user
       };
 
@@ -218,7 +218,7 @@ describe("Authentication Routes", () => {
         // This should not execute
         const newUser = {
           email: user.email,
-          name: user.name,
+          fullName: user.fullName,
           role: "student",
           brain_points: 0,
           createdAt: new Date(),
@@ -240,7 +240,7 @@ describe("Authentication Routes", () => {
       // Test the callback logic when state parameter is missing
       const user = {
         email: "nostate@test.com",
-        name: "No State User",
+        fullName: "No State User",
         isNewUser: true,
       };
 
@@ -251,7 +251,7 @@ describe("Authentication Routes", () => {
       if (user.isNewUser) {
         const newUser = {
           email: user.email,
-          name: user.name,
+          fullName: user.fullName,
           role: role,
           brain_points: 0,
           ...(role === "teacher" ? { prompt: null } : {}),
@@ -265,7 +265,7 @@ describe("Authentication Routes", () => {
       expect(mockCollection.insertOne).toHaveBeenCalledWith(
         expect.objectContaining({
           email: "nostate@test.com",
-          name: "No State User",
+          fullName: "No State User",
           role: "student", // Should default to student
           brain_points: 0,
           createdAt: expect.any(Date),
@@ -282,7 +282,7 @@ describe("Authentication Routes", () => {
       // Test the callback logic when database fails
       const user = {
         email: "dberror@test.com",
-        name: "DB Error User",
+        fullName: "DB Error User",
         isNewUser: true,
       };
       const role = "student";
@@ -293,7 +293,7 @@ describe("Authentication Routes", () => {
         if (user.isNewUser) {
           const newUser = {
             email: user.email,
-            name: user.name,
+            fullName: user.fullName,
             role: role,
             brain_points: 0,
             createdAt: new Date(),
@@ -310,7 +310,7 @@ describe("Authentication Routes", () => {
       expect(mockCollection.insertOne).toHaveBeenCalledWith(
         expect.objectContaining({
           email: "dberror@test.com",
-          name: "DB Error User",
+          fullName: "DB Error User",
           role: "student",
           brain_points: 0,
           createdAt: expect.any(Date),

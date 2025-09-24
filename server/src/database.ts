@@ -20,9 +20,7 @@ interface UserRow {
 
 export interface DatabaseUser {
   email: string;
-  firstname: string;
-  lastname: string;
-  name: string;
+  fullName: string;
   role: string;
   brain_points: number;
   prompt: string | null;
@@ -32,7 +30,7 @@ export interface DatabaseUser {
 
 export interface CreateUserInput {
   email: string;
-  name: string;
+  fullName: string;
   role: string;
   googleId: string;
   prompt?: string | null;
@@ -79,7 +77,7 @@ const INCREMENT_BRAIN_POINTS_SQL = `
 `;
 
 const SELECT_STUDENTS_SQL = `
-  SELECT firstname, lastname, google_email, brain_points
+  SELECT firstname, lastname, google_email, role, brain_points, prompt, google_id, created_at
   FROM users
   WHERE role = 'student'
   ORDER BY lastname ASC, firstname ASC;
@@ -93,9 +91,35 @@ const SELECT_TEACHER_PROMPT_SQL = `
   LIMIT 1;
 `;
 
+/**
+ * @class InMemoryQueryRunner
+ * @description
+ * Lightweight query runner used as a fallback when PostgreSQL is unavailable.
+ *
+ * - Stores user rows in a process-local `Map` keyed by email.
+ * - Emulates the subset of SQL statements required by the application.
+ * - Enables tests to exercise database logic without external services.
+ */
 class InMemoryQueryRunner implements Queryable {
   private users = new Map<string, UserRow>();
 
+  /**
+   * @async
+   * @function query
+   * @description
+   * Executes a simulated SQL statement against the in-memory data set.
+   *
+   * - Supports CREATE TABLE, SELECT, INSERT, and UPDATE verbs used in production.
+   * - Interprets SQL patterns to route behavior to dedicated handlers.
+   * - Preserves compatibility with the `pg` driver's return signature.
+   *
+   * @param {string} sql - Raw SQL string issued by the database abstraction.
+   * @param {unknown[]} [params=[]] - Parameter array mirroring prepared statements.
+   *
+   * @throws {Error} If the query text is not recognized by the emulator.
+   *
+   * @returns {Promise<QueryResult<T>>} Resolves with rows matching the query shape.
+   */
   async query<T>(sql: string, params: unknown[] = []): Promise<QueryResult<T>> {
     const normalized = sql.replace(/\s+/g, " ").trim().toLowerCase();
 
@@ -172,15 +196,50 @@ class InMemoryQueryRunner implements Queryable {
   }
 }
 
+/**
+ * @class Database
+ * @description
+ * PostgreSQL-backed persistence layer responsible for user storage.
+ *
+ * - Provides a uniform query interface with optional in-memory fallback.
+ * - Ensures all SQL interactions are encapsulated within a single module.
+ * - Supplies higher-level helpers for user-centric operations across the app.
+ */
 export class Database {
   private queryRunner: Queryable;
   private useInMemory: boolean;
 
+  /**
+   * @constructor
+   * @description
+   * Initializes the database wrapper with the preferred connection strategy.
+   *
+   * - Attempts to connect to PostgreSQL when a connection string is provided.
+   * - Falls back to the in-memory query runner when the `pg` module is unavailable.
+   * - Prepares the query runner for subsequent method invocations.
+   *
+   * @param {string} [connectionString] - PostgreSQL connection URI or undefined for in-memory mode.
+   */
   constructor(private connectionString?: string) {
     this.queryRunner = this.createQueryRunner(connectionString);
     this.useInMemory = this.queryRunner instanceof InMemoryQueryRunner;
   }
 
+  /**
+   * @function createQueryRunner
+   * @description
+   * Selects the appropriate query runner implementation based on runtime conditions.
+   *
+   * - Dynamically requires the `pg` module to avoid hard dependency failures.
+   * - Instantiates a `pg.Pool` when PostgreSQL connectivity is available.
+   * - Returns an `InMemoryQueryRunner` when configuration or dependencies are missing.
+   *
+   * @param {string} [connectionString] - Connection string used to configure the PostgreSQL pool.
+   *
+   * @throws {Error} If instantiating the `pg` pool fails for reasons other than module absence.
+   *
+   * @returns {Queryable} Concrete query runner ready to execute SQL statements.
+   */
   private createQueryRunner(connectionString?: string): Queryable {
     if (connectionString) {
       try {
@@ -197,16 +256,60 @@ export class Database {
     return new InMemoryQueryRunner();
   }
 
+  /**
+   * @async
+   * @function initialize
+   * @description
+   * Prepares the backing data store for application use.
+   *
+   * - Creates the `users` table when connected to PostgreSQL.
+   * - Performs a no-op when using the in-memory query runner.
+   * - Guarantees idempotent setup for repeated initializations.
+   *
+   * @throws {Error} If the underlying query runner fails to execute the setup statement.
+   *
+   * @returns {Promise<void>} Resolves when the initialization query completes.
+   */
   async initialize(): Promise<void> {
     await this.queryRunner.query(CREATE_USERS_TABLE_SQL);
   }
 
+  /**
+   * @async
+   * @function close
+   * @description
+   * Cleans up open resources held by the database abstraction.
+   *
+   * - Closes the PostgreSQL pool when applicable.
+   * - Skips teardown when running against the in-memory query runner.
+   * - Helps prevent resource leaks during controlled shutdowns.
+   *
+   * @throws {Error} If the pool's `end` method rejects during cleanup.
+   *
+   * @returns {Promise<void>} Resolves once the teardown logic finishes.
+   */
   async close(): Promise<void> {
     if (!this.useInMemory && this.queryRunner.end) {
       await this.queryRunner.end();
     }
   }
 
+  /**
+   * @async
+   * @function getUserByEmail
+   * @description
+   * Retrieves a single user record using their Google email as the lookup key.
+   *
+   * - Delegates the SQL query to the configured query runner.
+   * - Converts the returned row into the canonical `DatabaseUser` shape.
+   * - Supports both PostgreSQL and in-memory data sources transparently.
+   *
+   * @param {string} email - Google email address identifying the desired user.
+   *
+   * @throws {Error} If executing the SELECT statement fails.
+   *
+   * @returns {Promise<DatabaseUser | null>} Resolves with the located user or `null` when absent.
+   */
   async getUserByEmail(email: string): Promise<DatabaseUser | null> {
     const result = await this.queryRunner.query<UserRow>(SELECT_USER_BY_EMAIL_SQL, [
       email,
@@ -215,8 +318,24 @@ export class Database {
     return row ? this.mapRowToUser(row) : null;
   }
 
-  async createUser({ email, name, role, googleId, prompt }: CreateUserInput) {
-    const { firstname, lastname } = this.splitName(name);
+  /**
+   * @async
+   * @function createUser
+   * @description
+   * Inserts a new user into the persistence layer if they do not already exist.
+   *
+   * - Splits the provided full name into first and last name components.
+   * - Executes an upsert-like INSERT guarded by the email uniqueness constraint.
+   * - Initializes role, prompt, and brain point defaults consistently.
+   *
+   * @param {CreateUserInput} params - Data required to seed the new user record.
+   *
+   * @throws {Error} If the INSERT statement fails within the query runner.
+   *
+   * @returns {Promise<void>} Resolves after the insertion attempt completes.
+   */
+  async createUser({ email, fullName, role, googleId, prompt }: CreateUserInput) {
+    const { firstname, lastname } = this.splitName(fullName);
     await this.queryRunner.query(INSERT_USER_SQL, [
       firstname,
       lastname,
@@ -228,10 +347,44 @@ export class Database {
     ]);
   }
 
+  /**
+   * @async
+   * @function updatePrompt
+   * @description
+   * Persists a new mentor prompt for a given user.
+   *
+   * - Accepts prompt updates from both teachers and administrators.
+   * - Handles null prompts to support clearing existing values.
+   * - Delegates the update to the configured query runner.
+   *
+   * @param {string} email - Google email used to identify the target user.
+   * @param {string | null} prompt - New prompt content or `null` to unset.
+   *
+   * @throws {Error} If the UPDATE statement fails during execution.
+   *
+   * @returns {Promise<void>} Resolves once the prompt field has been updated.
+   */
   async updatePrompt(email: string, prompt: string | null): Promise<void> {
     await this.queryRunner.query(UPDATE_PROMPT_SQL, [email, prompt]);
   }
 
+  /**
+   * @async
+   * @function incrementBrainPoints
+   * @description
+   * Adjusts a user's brain points by the specified delta.
+   *
+   * - Uses an atomic UPDATE to increment points within the database.
+   * - Returns the resulting balance for immediate feedback to callers.
+   * - Maintains compatibility with both PostgreSQL and in-memory stores.
+   *
+   * @param {string} email - Google email identifying the user to update.
+   * @param {number} amount - Number of points to add to the existing total.
+   *
+   * @throws {Error} If the underlying UPDATE statement fails to execute.
+   *
+   * @returns {Promise<number | null>} Resolves with the new balance or `null` when the user is missing.
+   */
   async incrementBrainPoints(email: string, amount: number): Promise<number | null> {
     const result = await this.queryRunner.query<{ brain_points: number }>(
       INCREMENT_BRAIN_POINTS_SQL,
@@ -240,11 +393,39 @@ export class Database {
     return result.rows[0]?.brain_points ?? null;
   }
 
+  /**
+   * @async
+   * @function getStudents
+   * @description
+   * Returns the roster of student accounts sorted by name.
+   *
+   * - Queries only users assigned the `student` role.
+   * - Normalizes rows into the shared `DatabaseUser` representation.
+   * - Preserves deterministic ordering by last and then first name.
+   *
+   * @throws {Error} If the SELECT statement fails when executed.
+   *
+   * @returns {Promise<DatabaseUser[]>} Resolves with an array of students.
+   */
   async getStudents(): Promise<DatabaseUser[]> {
     const result = await this.queryRunner.query<UserRow>(SELECT_STUDENTS_SQL);
     return result.rows.map((row) => this.mapRowToUser(row));
   }
 
+  /**
+   * @async
+   * @function getTeacherPrompt
+   * @description
+   * Fetches the earliest created teacher's stored prompt.
+   *
+   * - Scans teachers ordered by creation timestamp.
+   * - Extracts only the prompt column for efficiency.
+   * - Supports null prompts to signal unset teacher guidance.
+   *
+   * @throws {Error} If the SELECT statement encounters an execution failure.
+   *
+   * @returns {Promise<string | null>} Resolves with the prompt string or `null` if unavailable.
+   */
   async getTeacherPrompt(): Promise<string | null> {
     const result = await this.queryRunner.query<{ prompt: string | null }>(
       SELECT_TEACHER_PROMPT_SQL
@@ -252,13 +433,24 @@ export class Database {
     return result.rows[0]?.prompt ?? null;
   }
 
+  /**
+   * @function mapRowToUser
+   * @description
+   * Converts a raw database row into the high-level user structure consumed by the app.
+   *
+   * - Concatenates first and last names into a single `fullName` string.
+   * - Normalizes nullable fields to maintain consistent return types.
+   * - Ensures timestamps are returned as JavaScript `Date` instances.
+   *
+   * @param {UserRow} row - Source row retrieved from the data store.
+   *
+   * @returns {DatabaseUser} Canonical representation of the supplied row.
+   */
   private mapRowToUser(row: UserRow): DatabaseUser {
-    const name = [row.firstname, row.lastname].filter(Boolean).join(" ").trim();
+    const fullName = [row.firstname, row.lastname].filter(Boolean).join(" ").trim();
     return {
       email: row.google_email,
-      firstname: row.firstname,
-      lastname: row.lastname,
-      name: name || row.firstname || row.lastname || "",
+      fullName: fullName || row.firstname || row.lastname || "",
       role: row.role,
       brain_points: row.brain_points ?? 0,
       prompt: row.prompt ?? null,
@@ -267,6 +459,19 @@ export class Database {
     };
   }
 
+  /**
+   * @function splitName
+   * @description
+   * Breaks a full name into first and last components for storage.
+   *
+   * - Trims extraneous whitespace to avoid inconsistent persistence.
+   * - Treats the first token as the first name and the remainder as last name.
+   * - Handles empty input by returning blank placeholders.
+   *
+   * @param {string} name - Full name string supplied during user creation.
+   *
+   * @returns {{ firstname: string; lastname: string }} Parsed name fragments for persistence.
+   */
   private splitName(name: string): { firstname: string; lastname: string } {
     const trimmed = name?.trim();
     if (!trimmed) {

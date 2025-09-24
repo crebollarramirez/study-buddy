@@ -9,7 +9,7 @@ interface AuthRouter {
 
 interface User {
   email: string;
-  name: string;
+  fullName: string;
   googleId: string;
   isNewUser: boolean;
   role: string;
@@ -118,7 +118,7 @@ const createAuthRouter = (): AuthRouter => {
 
           await getDatabase().createUser({
             email: user.email,
-            name: user.name,
+            fullName: user.fullName,
             role,
             googleId: user.googleId,
             prompt: role === "teacher" ? null : undefined,

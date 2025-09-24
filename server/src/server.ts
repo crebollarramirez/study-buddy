@@ -12,7 +12,7 @@ import { requireAuth, requireRole } from "./middleware";
 import { initializeSocketHandlers } from "./socket/socketHandlers";
 import createAuthRouter from "./routes/auth";
 import "./types/session";
-import { Database } from "./database";
+import { Database, DatabaseUser } from "./database";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -121,7 +121,7 @@ app.get("/debug/auth", (req: Request, res: Response) => {
 
 app.get("/brain_points", requireAuth, async (req: Request, res: Response) => {
   try {
-    const user = req.user as any;
+    const user = req.user as DatabaseUser;
     const dbUser = await database.getUserByEmail(user.email);
     if (dbUser) {
       res.json({ brain_points: dbUser.brain_points });
@@ -138,7 +138,7 @@ app.get("/students", async (req: Request, res: Response) => {
     const students = await database.getStudents();
     const response = students.map((student) => ({
       email: student.email,
-      name: student.name,
+      name: student.fullName,
       brain_points: student.brain_points,
     }));
     res.json({ students: response });
@@ -153,10 +153,10 @@ app.get(
   requireRole("teacher"),
   async (req: Request, res: Response) => {
     try {
-      const user = req.user as any;
+      const user = req.user as DatabaseUser;
       res.json({
         message: "Welcome to teacher dashboard",
-        teacher: user.name,
+        teacher: user.fullName,
         role: user.role,
       });
     } catch (error) {
@@ -172,7 +172,7 @@ app.post(
   requireAuth,
   async (req: Request, res: Response) => {
     const { prompt } = req.body;
-    const user = req.user as any;
+    const user = req.user as DatabaseUser;
 
     if (!prompt) {
       return res.status(400).json({ error: "Prompt is required" });
@@ -216,7 +216,7 @@ app.delete(
   requireAuth,
   async (req: Request, res: Response) => {
     try {
-      const user = req.user as any;
+      const user = req.user as DatabaseUser;
       const dbUser = await database.getUserByEmail(user.email);
       if (!dbUser) {
         return res.status(404).json({ error: "User not found" });

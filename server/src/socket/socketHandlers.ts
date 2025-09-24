@@ -11,7 +11,7 @@ interface CustomSocket extends Socket {
 async function authenticateSocket(
   socket: CustomSocket,
   database: Database
-): Promise<any | null> {
+): Promise<DatabaseUser | null> {
   console.log("Socket connection attempt");
   const session = socket.request.session;
 
@@ -55,7 +55,10 @@ async function authenticateSocket(
 }
 
 // Helper function to send welcome message based on user role
-async function sendWelcomeMessage(socket: CustomSocket, database: Database) {
+async function sendWelcomeMessage(
+  socket: CustomSocket,
+  database: Database
+): Promise<void> {
   try {
     const prompt = await database.getTeacherPrompt();
     const user = socket.user;
@@ -63,16 +66,16 @@ async function sendWelcomeMessage(socket: CustomSocket, database: Database) {
     if (user.role === "student") {
       if (prompt) {
         socket.emit("response", {
-          message: `Welcome, ${user.name}! Your teacher has set the prompt to be: ${prompt}`,
+          message: `Welcome, ${user.fullName}! Your teacher has set the prompt to be: ${prompt}`,
         });
       } else {
         socket.emit("response", {
-          message: `Welcome, ${user.name}! No prompt has been set by your teacher yet.`,
+          message: `Welcome, ${user.fullName}! No prompt has been set by your teacher yet.`,
         });
       }
     } else if (user.role === "teacher") {
       socket.emit("response", {
-        message: `Welcome, ${user.name}! You are connected as a teacher.`,
+        message: `Welcome, ${user.fullName}! You are connected as a teacher.`,
       });
     }
   } catch (error) {
@@ -117,7 +120,7 @@ export function initializeSocketHandlers(
 
       socket.join(room);
       socket.to(room).emit("status", {
-        msg: `${user?.name || "A user"} (${
+        msg: `${user?.fullName || "A user"} (${ 
           user?.role || "unknown"
         }) has joined the room.`,
       });
@@ -131,7 +134,7 @@ export function initializeSocketHandlers(
 
       socket.leave(room);
       socket.to(room).emit("status", {
-        msg: `${user?.name || "A user"} (${
+        msg: `${user?.fullName || "A user"} (${ 
           user?.role || "unknown"
         }) has left the room.`,
       });

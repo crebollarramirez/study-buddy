@@ -37,7 +37,7 @@ describe("GET /auth/google/callback", () => {
     // This approach tests the exact same logic as the auth.ts callback
     const user = {
       email: "new@example.com",
-      name: "New User",
+      fullName: "New User",
       isNewUser: true,
     };
 
@@ -57,7 +57,7 @@ describe("GET /auth/google/callback", () => {
     if (user.isNewUser) {
       const newUser = {
         email: user.email,
-        name: user.name,
+        fullName: user.fullName,
         role: role,
         brain_points: 0,
         ...(role === "teacher" ? { prompt: null } : {}),
@@ -70,7 +70,7 @@ describe("GET /auth/google/callback", () => {
     // Verify database call
     expect(mockCollection.insertOne).toHaveBeenCalledWith({
       email: "new@example.com",
-      name: "New User",
+      fullName: "New User",
       role: "student",
       brain_points: 0,
       createdAt: expect.any(Date),
@@ -90,7 +90,7 @@ describe("GET /auth/google/callback", () => {
       // This should not execute for existing users
       const newUser = {
         email: user.email,
-        name: "Existing User",
+        fullName: "Existing User",
         role: "student",
         brain_points: 0,
         createdAt: new Date(),
@@ -109,7 +109,7 @@ describe("GET /auth/google/callback", () => {
     // Test error handling in callback logic
     const user = {
       email: "broken@example.com",
-      name: "Failing User",
+      fullName: "Failing User",
       isNewUser: true,
     };
 
@@ -118,7 +118,7 @@ describe("GET /auth/google/callback", () => {
       if (user.isNewUser) {
         const newUser = {
           email: user.email,
-          name: user.name,
+          fullName: user.fullName,
           role: "student",
           brain_points: 0,
           createdAt: new Date(),

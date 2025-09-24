@@ -34,7 +34,7 @@ describe("makeGoogleVerify", () => {
       null,
       expect.objectContaining({
         email: "ada@example.com",
-        name: "Ada Lovelace",
+        fullName: "Ada Lovelace",
         googleId: "gid-123",
         isNewUser: true,
         role: "student", // default role when new
@@ -46,7 +46,7 @@ describe("makeGoogleVerify", () => {
     mockDatabase.getUserByEmail.mockResolvedValueOnce({
       email: "ada@example.com",
       role: "Teacher",
-      name: "Ada Lovelace",
+      fullName: "Ada Lovelace",
     });
 
     await makeGoogleVerify(mockDatabase as any)("", "", baseProfile, done);
