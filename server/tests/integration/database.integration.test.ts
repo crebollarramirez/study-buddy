@@ -5,7 +5,7 @@ describe("Database integration with mocked query runner", () => {
   let queryRunner: { query: jest.Mock; end?: jest.Mock };
 
   beforeEach(() => {
-    database = new Database();
+    database = new Database("test");
     queryRunner = {
       query: jest.fn(),
       end: jest.fn(),

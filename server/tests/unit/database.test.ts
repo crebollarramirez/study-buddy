@@ -15,7 +15,7 @@ describe("Database utility methods", () => {
   let database: Database;
 
   beforeEach(() => {
-    database = new Database();
+    database = new Database("test");
   });
 
   describe("splitName", () => {

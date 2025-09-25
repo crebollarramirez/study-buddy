@@ -1,8 +1,11 @@
 import { Database } from "@/database";
+import dotenv from "dotenv";
+
+// Load environment variables from .env file
+dotenv.config();
 
 const pgModule = (() => {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
     return require("pg");
   } catch (error) {
     console.warn(
@@ -18,13 +21,37 @@ type PgClientInstance = {
   end(): Promise<void>;
 };
 
-type PgClientConstructor = new (config: { connectionString: string }) => PgClientInstance;
+type PgClientConstructor = new (config: {
+  connectionString: string;
+}) => PgClientInstance;
 
 const Client = (pgModule?.Client ?? null) as PgClientConstructor | null;
 
 const connectionString = process.env.TEST_DATABASE_URL;
 
-const describeIfConnection = connectionString && Client ? describe : describe.skip;
+// Add debugging information
+console.log("🔍 E2E Test Debug Info:");
+console.log("  TEST_DATABASE_URL:", connectionString ? "✅ Set" : "❌ Not set");
+console.log("  Connection String:", connectionString || "undefined");
+console.log(
+  "  PostgreSQL Client:",
+  Client ? "✅ Available" : "❌ Not available"
+);
+
+if (!connectionString) {
+  console.warn(
+    "⚠️  Database end-to-end tests will be SKIPPED. Set TEST_DATABASE_URL to enable them."
+  );
+}
+
+if (!Client) {
+  console.warn(
+    "⚠️  PostgreSQL client 'pg' not found. Install with: npm install pg @types/pg"
+  );
+}
+
+const describeIfConnection =
+  connectionString && Client ? describe : describe.skip;
 
 describeIfConnection("Database end-to-end with PostgreSQL", () => {
   const PgClient = Client!;
@@ -37,27 +64,55 @@ describeIfConnection("Database end-to-end with PostgreSQL", () => {
 
   beforeAll(async () => {
     if (!connectionString) {
+      console.log("⚠️  No connection string provided, skipping setup");
       return;
     }
 
     try {
+      console.log("🚀 Starting E2E database test setup...");
+      console.log("📡 Attempting to connect to:", connectionString);
+
       adminClient = new PgClient({ connectionString });
       await adminClient.connect();
+      console.log("✅ Successfully connected to PostgreSQL server");
 
       testDatabaseName = `study_buddy_test_${Date.now()}_${Math.random()
         .toString(36)
         .slice(2, 8)}`;
+
+      console.log(`📦 Creating test database: ${testDatabaseName}`);
       await adminClient.query(`CREATE DATABASE ${testDatabaseName}`);
+      console.log("✅ Test database created successfully");
 
       const url = new URL(connectionString);
       url.pathname = `/${testDatabaseName}`;
+      const testDbUrl = url.toString();
 
-      database = new Database(url.toString());
+      console.log("🔧 Initializing Database class with:", testDbUrl);
+      database = new Database(testDbUrl);
       await database.initialize();
+      console.log("✅ Database class initialized and tables created");
+
+      console.log("🎉 E2E test setup completed successfully");
     } catch (error) {
       skip = true;
+      console.error("❌ E2E test setup failed:");
+      console.error(
+        "   Error type:",
+        error instanceof Error ? error.constructor.name : typeof error
+      );
+      console.error(
+        "   Error message:",
+        error instanceof Error ? error.message : String(error)
+      );
+      console.error("   Connection string used:", connectionString);
+
+      if (error instanceof Error && error.stack) {
+        console.error("   Stack trace:", error.stack);
+      }
+
       console.warn(
-        `Skipping Database end-to-end tests: ${error instanceof Error ? error.message : error}`
+        "⚠️  Database end-to-end tests will be skipped due to setup failure"
       );
     }
   });
@@ -74,10 +129,14 @@ describeIfConnection("Database end-to-end with PostgreSQL", () => {
     if (adminClient) {
       if (testDatabaseName) {
         try {
-          await adminClient.query(`DROP DATABASE IF EXISTS ${testDatabaseName}`);
+          await adminClient.query(
+            `DROP DATABASE IF EXISTS ${testDatabaseName}`
+          );
         } catch (error) {
           console.warn(
-            `Failed to drop temporary database ${testDatabaseName}: ${error instanceof Error ? error.message : error}`
+            `Failed to drop temporary database ${testDatabaseName}: ${
+              error instanceof Error ? error.message : error
+            }`
           );
         }
       }
@@ -144,7 +203,9 @@ describeIfConnection("Database end-to-end with PostgreSQL", () => {
       }),
     ]);
 
-    expect(await database.incrementBrainPoints("missing@example.com", 3)).toBeNull();
+    expect(
+      await database.incrementBrainPoints("missing@example.com", 3)
+    ).toBeNull();
     expect(await database.getUserByEmail("missing@example.com")).toBeNull();
   });
 });
