@@ -50,6 +50,7 @@
     // Base URL and Paths
     "baseUrl": ".",
     "paths": {
+      "@/*": ["src/*"],
       "@tests/*": ["tests/*"]
     }
   },
