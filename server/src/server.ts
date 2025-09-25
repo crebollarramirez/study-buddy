@@ -1,7 +1,6 @@
 import express, { Request, Response } from "express";
 import cors from "cors";
 import session from "express-session";
-import MongoStore from "connect-mongo";
 import { Server } from "socket.io";
 import { createServer } from "http";
 import dotenv from "dotenv";
@@ -22,14 +21,7 @@ const server = createServer(app);
 
 // PostgreSQL setup
 const POSTGRES_URL =
-  process.env.POSTGRES_URL ||
-  (process.env.PG_USER &&
-  process.env.PG_HOST &&
-  process.env.PG_DATABASE &&
-  process.env.PG_PORT
-    ? `postgresql://${process.env.PG_USER}@${process.env.PG_HOST}:${process.env.PG_PORT}/${process.env.PG_DATABASE}`
-    : undefined);
-const MONGO_URL = process.env.MONGO_URL;
+  process.env.POSTGRES_URL;
 const database = new Database(POSTGRES_URL);
 
 // OpenAI setup
@@ -46,18 +38,11 @@ const io = new Server(server, {
 });
 
 // Session configuration
-const sessionStore =
-  MONGO_URL && MONGO_URL.trim().length > 0
-    ? MongoStore.create({
-        mongoUrl: MONGO_URL,
-      })
-    : new (session as any).MemoryStore();
 
 const sessionMiddleware = session({
   secret: process.env.SECRET_KEY || "TEST",
   resave: false,
   saveUninitialized: false,
-  store: sessionStore,
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 24 hours
     httpOnly: true,
