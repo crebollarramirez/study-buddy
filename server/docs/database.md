@@ -1,153 +1,229 @@
 # Database Module (server/src/database.ts)
 
-A lightweight persistence layer that wraps PostgreSQL with an optional in-memory fallback for local development and testing. It exposes a small, focused API for common user operations used across the app.
+The database layer encapsulates all persistence for users, classrooms, and
+assignment references. It wraps PostgreSQL through a small, well-typed API and
+falls back to an in-memory implementation when a database connection is not
+available. All application code interacts with data exclusively through the
+`Database` class—route handlers and sockets never issue raw SQL statements.
 
 ## Highlights
 
-- PostgreSQL connection via `pg.Pool` when a connection string is available
-- In-memory query runner when no DB is configured (zero external deps)
-- Idempotent initialization (creates `users` table if missing)
-- Small API surface: create/get/update users and brain points, query students, teacher prompt
-- Clean data mapping to a single `DatabaseUser` shape consumed by the app
+- Automatic schema provisioning for users, classrooms, student membership, and
+  assignment references via `initialize()`.
+- Optional in-memory store that mirrors the public API for local testing.
+- Strongly typed helpers for user data, classroom summaries, and classroom
+  details (including set semantics for students/assignments).
+- Convenience methods for incrementing brain points, fetching rosters, and
+  enforcing classroom ownership rules in higher layers.
 
 ---
 
-## Environment & Configuration
+## Schema Overview
 
-You can configure the DB connection in one of two ways:
+### `users`
 
-1. Provide a full connection string via `POSTGRES_URL`
+Stores teachers and students. Created automatically when `initialize()` runs.
 
-- Example: `postgresql://<user>:<password>@<host>:<port>/<database>`
+| Column        | Type      | Notes                                    |
+| ------------- | --------- | ---------------------------------------- |
+| `id`          | SERIAL PK | internal identifier                      |
+| `firstname`   | TEXT      | derived from the provided full name      |
+| `lastname`    | TEXT      | derived from the provided full name      |
+| `google_email`| TEXT      | unique login email (used as foreign key) |
+| `role`        | TEXT      | `teacher` or `student`                   |
+| `brain_points`| INTEGER   | defaults to `0`                          |
+| `prompt`      | TEXT      | optional mentor prompt                   |
+| `google_id`   | TEXT      | OAuth provider id                        |
+| `created_at`  | TIMESTAMP | default `NOW()`                          |
 
-2. Or provide discrete variables (a connection string will be constructed automatically):
+### `classrooms`
 
-- `PG_USER`
-- `PG_HOST`
-- `PG_DATABASE`
-- `PG_PORT`
+Represents a classroom owned by a teacher. Ownership is stored on the row and
+is used to enforce update/delete permissions.
 
-If neither is provided, the module falls back to an in-memory store. On successful connection it logs:
+| Column          | Type | Notes                                                      |
+| --------------- | ---- | ---------------------------------------------------------- |
+| `classroom_id`  | UUID | primary key, generated with `crypto.randomUUID()`          |
+| `class_name`    | TEXT | human readable name                                        |
+| `subject`       | TEXT | subject area                                               |
+| `teacher_email` | TEXT | references `users.google_email` (creator/admin teacher)    |
 
-- `✅ Connected to PostgreSQL database successfully`
+### `classroom_students`
 
-If it cannot connect, it logs:
+Maintains classroom membership with set semantics—each `(classroom_id,
+student_email)` pair is unique.
 
-- `❌ Failed to connect to PostgreSQL database: <error>` and falls back to in-memory.
+| Column          | Type | Notes                                             |
+| --------------- | ---- | ------------------------------------------------- |
+| `classroom_id`  | UUID | references `classrooms.classroom_id`              |
+| `student_email` | TEXT | references `users.google_email`                   |
+| Primary key     |      | composite `(classroom_id, student_email)`         |
+
+### `assignments`
+
+Stores assignment metadata (currently limited to optional `bookId`/`prompt`).
+Assignments are referenced by classrooms through the join table below.
+
+| Column          | Type | Notes                                 |
+| --------------- | ---- | ------------------------------------- |
+| `assignment_id` | UUID | primary key                           |
+| `book_id`       | TEXT | optional resource identifier          |
+| `prompt`        | TEXT | optional textual prompt               |
+
+### `classroom_assignments`
+
+Associates assignment ids with classrooms using set semantics.
+
+| Column          | Type | Notes                                                 |
+| --------------- | ---- | ----------------------------------------------------- |
+| `classroom_id`  | UUID | references `classrooms.classroom_id`                  |
+| `assignment_id` | UUID | references `assignments.assignment_id`                |
+| Primary key     |      | composite `(classroom_id, assignment_id)`             |
+
+> **Ownership rules:** The teacher who creates a classroom is its administrator.
+> Only that teacher can update metadata (`className`, `subject`) or delete the
+> classroom. Membership changes are out of scope for this iteration.
 
 ---
 
-## Data Model
+## Public API
 
-The module persists a single table: `users`.
+### Construction & Lifecycle
 
-DDL used at startup (simplified):
+- `new Database(connectionString?)` – uses PostgreSQL when a connection string
+  is provided, otherwise falls back to the in-memory store.
+- `initialize()` – creates the tables listed above if they do not already
+  exist. Must be called before serving requests.
+- `close()` – closes the PostgreSQL pool when in use; no-op for in-memory.
 
+### User helpers
+
+- `createUser({ email, fullName, role, googleId, prompt? })`
+- `getUserByEmail(email)` → `DatabaseUser | null`
+- `updatePrompt(email, prompt)`
+- `incrementBrainPoints(email, amount)` → new total or `null`
+- `getStudents()` → ordered array of student `DatabaseUser`
+- `getTeacherPrompt()` → earliest teacher prompt or `null`
+
+### Classroom helpers
+
+All classroom and assignment lookups flow through these methods.
+
+- `createClassroom({ className, subject, students, teacher })` →
+  `DatabaseClassroom`
+  - Deduplicates student emails.
+  - Seeds `assignments` as an empty set.
+- `getClassroomSummariesByTeacher(teacherEmail)` → `ClassroomSummary[]`
+- `getClassroomSummariesByStudent(studentEmail)` → `ClassroomSummary[]`
+- `getClassroomById(classroomId)` → `DatabaseClassroom | null`
+- `updateClassroom({ classroomId, className?, subject? })` →
+  `DatabaseClassroom | null`
+- `deleteClassroom(classroomId)` → `boolean`
+
+A `DatabaseClassroom` exposes:
+
+```ts
+{
+  classroomId: string;
+  className: string;
+  subject: string;
+  teacher: string; // creator/admin email
+  students: Set<string>; // member emails, unique
+  assignments: Set<string>; // assignment ids, unique
+}
 ```
-CREATE TABLE IF NOT EXISTS users (
-  id SERIAL PRIMARY KEY,
-  firstname TEXT NOT NULL,
-  lastname TEXT NOT NULL,
-  google_email TEXT UNIQUE NOT NULL,
-  role TEXT NOT NULL,
-  brain_points INTEGER NOT NULL DEFAULT 0,
-  prompt TEXT,
-  google_id TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+
+---
+
+## `/classroom` HTTP Routes
+
+All classroom endpoints are mounted from `server/src/routes/classroom.ts` and
+require authentication. Mutating routes additionally require the `teacher`
+role. Handlers rely entirely on the `Database` API described above.
+
+### `GET /classroom`
+
+List or fetch classrooms for the authenticated user.
+
+Query parameters:
+
+- `classroomId` – when present, returns detail view.
+- `shape=ids|full` – list mode response shape. Defaults to `full` for teachers
+  and `ids` for students.
+
+Responses:
+
+- List (student, default `ids`): `{ "classrooms": ["uuid-1", "uuid-2"] }`
+- List (teacher, default `full`):
+  ```json
+  {
+    "classrooms": [
+      { "classroomId": "uuid-10", "className": "Algebra I", "subject": "Math", "teacher": "teacher@school.edu" }
+    ]
+  }
+  ```
+- Detail (owner or member):
+  ```json
+  {
+    "classroom": {
+      "classroomId": "uuid-10",
+      "className": "Algebra I",
+      "subject": "Math",
+      "teacher": "teacher@school.edu",
+      "students": ["sally@school.edu"],
+      "assignments": ["assign-1"]
+    }
+  }
+  ```
+
+Error codes:
+
+- `401` – unauthenticated.
+- `403` – authenticated but lacks role or membership/ownership.
+- `404` – classroom not found (detail mode).
+- `400` – invalid `shape` parameter.
+
+### `POST /classroom/create`
+
+Creates a classroom for the authenticated teacher.
+
+Body:
+
+```json
+{
+  "className": "Algebra I",
+  "subject": "Math",
+  "students": ["student@example.com"]
+}
 ```
 
-### Row shape (internal)
+Validates email format, deduplicates students, and records the current teacher
+as admin. Responds with `201` and the full classroom payload. Common errors:
+`400` for invalid input, `401/403` for missing authentication or role.
 
-- id: number (serial)
-- firstname: string
-- lastname: string
-- google_email: string (unique)
-- role: string (e.g., "student", "teacher")
-- brain_points: number
-- prompt: string | null
-- google_id: string | null
-- created_at: Date
+### `PATCH /classroom/update`
 
-### Public shape (returned by the module)
+Updates `className` and/or `subject` for an owned classroom.
 
-`DatabaseUser`:
+Body must include `classroomId` plus at least one field to update. Only the
+admin teacher can perform the update. Responds with the updated classroom on
+success. Errors: `400` invalid input, `403` when not the owner, `404` when the
+classroom is missing.
 
-- email: string (from `google_email`)
-- fullName: string (concatenation of first and last names)
-- role: string
-- brain_points: number
-- prompt: string | null
-- googleId: string | null
-- createdAt: Date
+### `DELETE /classroom/:classroomId`
 
-## API Reference
-
-### constructor(connectionString?: string)
-
-- If provided, attempts to create a `pg.Pool`.
-- If omitted or connection fails, falls back to in-memory.
-
-### initialize(): Promise<void>
-
-- Creates the `users` table in Postgres.
-- No-op in memory.
-
-### close(): Promise<void>
-
-- Closes the `pg.Pool` if connected to Postgres.
-- No-op in memory.
-
-### getUserByEmail(email: string): Promise<DatabaseUser | null>
-
-- Returns a single user mapped to `DatabaseUser`, or `null`.
-
-### createUser(params: CreateUserInput): Promise<void>
-
-- Inserts a new user if not present (guarded by unique email).
-- Splits `fullName` into `firstname` and `lastname`.
-
-### updatePrompt(email: string, prompt: string | null): Promise<void>
-
-- Sets or clears the prompt for the user.
-
-### incrementBrainPoints(email: string, amount: number): Promise<number | null>
-
-- Atomically increments points and returns the new balance, or `null` if user not found.
-
-### getStudents(): Promise<DatabaseUser[]>
-
-- Returns students ordered by last name, then first name.
-
-### getTeacherPrompt(): Promise<string | null>
-
-- Returns the earliest teacher's prompt or `null`.
+Deletes a classroom and cascades membership/assignment references. Only the
+admin teacher may delete. Responds with `204` on success, `403` when forbidden,
+`404` when the classroom does not exist.
 
 ---
 
-## In-memory Fallback
+## Notes & Tips
 
-When Postgres is unavailable or misconfigured, the module uses an internal `InMemoryQueryRunner`:
-
-- Stores users in a process-local Map keyed by email
-- Emulates only the subset of SQL used by this module
-- Useful for tests and local prototyping
-
-Note: In-memory data is ephemeral and cleared when the process exits.
-
----
-
-## Error Handling & Logging
-
-- Connection success/failure is logged at startup.
-- SQL operations surface errors to callers; you can `try/catch` at call sites.
-- In-memory runner throws when it encounters unsupported SQL to avoid silent failures.
-
----
-
-## Tips
-
-- Always call `await db.initialize()` after constructing the Database.
-- Use `POSTGRES_URL` in production; let discrete PG\_\* vars serve local dev.
-- Treat `brain_points` as an integer counter; only use `incrementBrainPoints` to change it.
-- `fullName` is derived; update name by re-calling `createUser` with the new split or providing an update method if needed.
+- Always call `await database.initialize()` during application startup.
+- All classroom membership and assignment sets are managed with set semantics—
+  duplicates are automatically ignored.
+- Ownership checks (teacher-only updates/deletes) are enforced at the route
+  layer using data returned from the `Database` class.
+- The in-memory implementation mirrors the PostgreSQL API, enabling unit,
+  integration, and end-to-end tests without external services when desired.

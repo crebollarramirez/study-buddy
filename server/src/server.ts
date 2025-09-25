@@ -10,6 +10,7 @@ import { configurePassport } from "./config/passport";
 import { requireAuth, requireRole } from "./middleware";
 import { initializeSocketHandlers } from "./socket/socketHandlers";
 import createAuthRouter from "./routes/auth";
+import createClassroomRouter from "./routes/classroom";
 import "./types/session";
 import { Database, DatabaseUser } from "./database";
 import { SessionData } from "express-session";
@@ -85,6 +86,10 @@ async function initializeApp() {
 
     // Mount auth routes with /auth prefix
     app.use("/auth", authRouter.router);
+
+    // Classroom routes
+    const classroomRouter = createClassroomRouter(database);
+    app.use("/classroom", classroomRouter);
 
     // Initialize Socket.IO handlers with database collections
     initializeSocketHandlers(io, database, openai);
