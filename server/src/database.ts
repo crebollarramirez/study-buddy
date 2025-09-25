@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 type QueryResult<T> = { rows: T[] };
 
 interface Queryable {
@@ -27,6 +29,31 @@ export interface DatabaseUser {
   createdAt: Date;
 }
 
+export interface ClassroomSummary {
+  classroomId: string;
+  className: string;
+  subject: string;
+  teacher: string;
+}
+
+export interface DatabaseClassroom extends ClassroomSummary {
+  students: Set<string>;
+  assignments: Set<string>;
+}
+
+export interface CreateClassroomInput {
+  className: string;
+  subject: string;
+  students: string[];
+  teacher: string;
+}
+
+export interface UpdateClassroomInput {
+  classroomId: string;
+  className?: string;
+  subject?: string;
+}
+
 export interface CreateUserInput {
   email: string;
   fullName: string;
@@ -46,6 +73,39 @@ const CREATE_USERS_TABLE_SQL = `
     prompt TEXT,
     google_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+`;
+
+const CREATE_CLASSROOMS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS classrooms (
+    classroom_id UUID PRIMARY KEY,
+    class_name TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    teacher_email TEXT NOT NULL REFERENCES users(google_email) ON DELETE CASCADE
+  );
+`;
+
+const CREATE_CLASSROOM_STUDENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS classroom_students (
+    classroom_id UUID NOT NULL REFERENCES classrooms(classroom_id) ON DELETE CASCADE,
+    student_email TEXT NOT NULL REFERENCES users(google_email) ON DELETE CASCADE,
+    PRIMARY KEY (classroom_id, student_email)
+  );
+`;
+
+const CREATE_ASSIGNMENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS assignments (
+    assignment_id UUID PRIMARY KEY,
+    book_id TEXT,
+    prompt TEXT
+  );
+`;
+
+const CREATE_CLASSROOM_ASSIGNMENTS_TABLE_SQL = `
+  CREATE TABLE IF NOT EXISTS classroom_assignments (
+    classroom_id UUID NOT NULL REFERENCES classrooms(classroom_id) ON DELETE CASCADE,
+    assignment_id UUID NOT NULL REFERENCES assignments(assignment_id) ON DELETE CASCADE,
+    PRIMARY KEY (classroom_id, assignment_id)
   );
 `;
 
@@ -73,6 +133,59 @@ const INCREMENT_BRAIN_POINTS_SQL = `
   SET brain_points = brain_points + $2
   WHERE google_email = $1
   RETURNING brain_points;
+`;
+
+const INSERT_CLASSROOM_SQL = `
+  INSERT INTO classrooms (classroom_id, class_name, subject, teacher_email)
+  VALUES ($1, $2, $3, $4);
+`;
+
+const INSERT_CLASSROOM_STUDENT_SQL = `
+  INSERT INTO classroom_students (classroom_id, student_email)
+  VALUES ($1, $2)
+  ON CONFLICT DO NOTHING;
+`;
+
+const SELECT_CLASSROOM_SUMMARIES_BY_TEACHER_SQL = `
+  SELECT classroom_id, class_name, subject, teacher_email
+  FROM classrooms
+  WHERE teacher_email = $1
+  ORDER BY class_name ASC, classroom_id ASC;
+`;
+
+const SELECT_CLASSROOM_SUMMARIES_BY_STUDENT_SQL = `
+  SELECT c.classroom_id, c.class_name, c.subject, c.teacher_email
+  FROM classrooms c
+  INNER JOIN classroom_students cs ON cs.classroom_id = c.classroom_id
+  WHERE cs.student_email = $1
+  ORDER BY c.class_name ASC, c.classroom_id ASC;
+`;
+
+const SELECT_CLASSROOM_BASE_SQL = `
+  SELECT classroom_id, class_name, subject, teacher_email
+  FROM classrooms
+  WHERE classroom_id = $1
+  LIMIT 1;
+`;
+
+const SELECT_CLASSROOM_STUDENTS_SQL = `
+  SELECT student_email
+  FROM classroom_students
+  WHERE classroom_id = $1;
+`;
+
+const SELECT_CLASSROOM_ASSIGNMENTS_SQL = `
+  SELECT assignment_id
+  FROM classroom_assignments
+  WHERE classroom_id = $1;
+`;
+
+const UPDATE_CLASSROOM_SQL_BASE = "UPDATE classrooms";
+
+const DELETE_CLASSROOM_SQL = `
+  DELETE FROM classrooms
+  WHERE classroom_id = $1
+  RETURNING classroom_id;
 `;
 
 const SELECT_STUDENTS_SQL = `
@@ -229,6 +342,7 @@ class InMemoryQueryRunner implements Queryable {
 export class Database {
   private queryRunner: Queryable;
   private useInMemory: boolean;
+  private classroomStore: Map<string, DatabaseClassroom>;
 
   /**
    * @constructor
@@ -244,6 +358,7 @@ export class Database {
   constructor(private connectionString?: string) {
     this.queryRunner = this.createQueryRunner(connectionString);
     this.useInMemory = this.queryRunner instanceof InMemoryQueryRunner;
+    this.classroomStore = new Map();
   }
 
   /**
@@ -298,6 +413,10 @@ export class Database {
    */
   async initialize(): Promise<void> {
     await this.queryRunner.query(CREATE_USERS_TABLE_SQL);
+    await this.queryRunner.query(CREATE_CLASSROOMS_TABLE_SQL);
+    await this.queryRunner.query(CREATE_CLASSROOM_STUDENTS_TABLE_SQL);
+    await this.queryRunner.query(CREATE_ASSIGNMENTS_TABLE_SQL);
+    await this.queryRunner.query(CREATE_CLASSROOM_ASSIGNMENTS_TABLE_SQL);
   }
 
   /**
@@ -430,6 +549,202 @@ export class Database {
   }
 
   /**
+   * Creates a new classroom owned by the provided teacher.
+   */
+  async createClassroom({
+    className,
+    subject,
+    students,
+    teacher,
+  }: CreateClassroomInput): Promise<DatabaseClassroom> {
+    const classroomId = randomUUID();
+    const dedupedStudents = Array.from(new Set(students));
+
+    if (this.useInMemory) {
+      const classroom: DatabaseClassroom = {
+        classroomId,
+        className,
+        subject,
+        teacher,
+        students: new Set(dedupedStudents),
+        assignments: new Set(),
+      };
+      this.classroomStore.set(classroomId, classroom);
+      return this.cloneClassroom(classroom);
+    }
+
+    await this.queryRunner.query(INSERT_CLASSROOM_SQL, [
+      classroomId,
+      className,
+      subject,
+      teacher,
+    ]);
+
+    for (const student of dedupedStudents) {
+      await this.queryRunner.query(INSERT_CLASSROOM_STUDENT_SQL, [
+        classroomId,
+        student,
+      ]);
+    }
+
+    const classroom = await this.getClassroomById(classroomId);
+    if (!classroom) {
+      throw new Error("Failed to fetch classroom after creation");
+    }
+    return classroom;
+  }
+
+  /**
+   * Retrieves classroom summaries for a teacher.
+   */
+  async getClassroomSummariesByTeacher(
+    teacherEmail: string
+  ): Promise<ClassroomSummary[]> {
+    if (this.useInMemory) {
+      return Array.from(this.classroomStore.values())
+        .filter((classroom) => classroom.teacher === teacherEmail)
+        .map((classroom) => this.toClassroomSummary(classroom));
+    }
+
+    const result = await this.queryRunner.query<{
+      classroom_id: string;
+      class_name: string;
+      subject: string;
+      teacher_email: string;
+    }>(SELECT_CLASSROOM_SUMMARIES_BY_TEACHER_SQL, [teacherEmail]);
+
+    return result.rows.map((row) => this.mapRowToClassroomSummary(row));
+  }
+
+  /**
+   * Retrieves classroom summaries for a student membership.
+   */
+  async getClassroomSummariesByStudent(
+    studentEmail: string
+  ): Promise<ClassroomSummary[]> {
+    if (this.useInMemory) {
+      return Array.from(this.classroomStore.values())
+        .filter((classroom) => classroom.students.has(studentEmail))
+        .map((classroom) => this.toClassroomSummary(classroom));
+    }
+
+    const result = await this.queryRunner.query<{
+      classroom_id: string;
+      class_name: string;
+      subject: string;
+      teacher_email: string;
+    }>(SELECT_CLASSROOM_SUMMARIES_BY_STUDENT_SQL, [studentEmail]);
+
+    return result.rows.map((row) => this.mapRowToClassroomSummary(row));
+  }
+
+  /**
+   * Retrieves a full classroom record by identifier.
+   */
+  async getClassroomById(
+    classroomId: string
+  ): Promise<DatabaseClassroom | null> {
+    if (this.useInMemory) {
+      const classroom = this.classroomStore.get(classroomId);
+      return classroom ? this.cloneClassroom(classroom) : null;
+    }
+
+    const baseResult = await this.queryRunner.query<{
+      classroom_id: string;
+      class_name: string;
+      subject: string;
+      teacher_email: string;
+    }>(SELECT_CLASSROOM_BASE_SQL, [classroomId]);
+
+    const baseRow = baseResult.rows[0];
+    if (!baseRow) {
+      return null;
+    }
+
+    const [studentsResult, assignmentsResult] = await Promise.all([
+      this.queryRunner.query<{ student_email: string }>(
+        SELECT_CLASSROOM_STUDENTS_SQL,
+        [classroomId]
+      ),
+      this.queryRunner.query<{ assignment_id: string }>(
+        SELECT_CLASSROOM_ASSIGNMENTS_SQL,
+        [classroomId]
+      ),
+    ]);
+
+    return {
+      classroomId: baseRow.classroom_id,
+      className: baseRow.class_name,
+      subject: baseRow.subject,
+      teacher: baseRow.teacher_email,
+      students: new Set(studentsResult.rows.map((row) => row.student_email)),
+      assignments: new Set(
+        assignmentsResult.rows.map((row) => row.assignment_id)
+      ),
+    };
+  }
+
+  /**
+   * Applies metadata updates to a classroom.
+   */
+  async updateClassroom({
+    classroomId,
+    className,
+    subject,
+  }: UpdateClassroomInput): Promise<DatabaseClassroom | null> {
+    if (this.useInMemory) {
+      const classroom = this.classroomStore.get(classroomId);
+      if (!classroom) {
+        return null;
+      }
+      if (typeof className === "string") {
+        classroom.className = className;
+      }
+      if (typeof subject === "string") {
+        classroom.subject = subject;
+      }
+      return this.cloneClassroom(classroom);
+    }
+
+    const updates: string[] = [];
+    const params: unknown[] = [];
+
+    if (typeof className === "string") {
+      updates.push(`class_name = $${updates.length + 1}`);
+      params.push(className);
+    }
+
+    if (typeof subject === "string") {
+      updates.push(`subject = $${updates.length + 1}`);
+      params.push(subject);
+    }
+
+    if (updates.length > 0) {
+      const whereIndex = updates.length + 1;
+      params.push(classroomId);
+      const sql = `${UPDATE_CLASSROOM_SQL_BASE} SET ${updates.join(", ")} WHERE classroom_id = $${whereIndex}`;
+      await this.queryRunner.query(sql, params);
+    }
+
+    return this.getClassroomById(classroomId);
+  }
+
+  /**
+   * Deletes a classroom.
+   */
+  async deleteClassroom(classroomId: string): Promise<boolean> {
+    if (this.useInMemory) {
+      return this.classroomStore.delete(classroomId);
+    }
+
+    const result = await this.queryRunner.query<{ classroom_id: string }>(
+      DELETE_CLASSROOM_SQL,
+      [classroomId]
+    );
+    return Boolean(result.rows[0]);
+  }
+
+  /**
    * @async
    * @function getStudents
    * @description
@@ -495,6 +810,40 @@ export class Database {
       prompt: row.prompt ?? null,
       googleId: row.google_id ?? null,
       createdAt: row.created_at ? new Date(row.created_at) : new Date(),
+    };
+  }
+
+  private mapRowToClassroomSummary(row: {
+    classroom_id: string;
+    class_name: string;
+    subject: string;
+    teacher_email: string;
+  }): ClassroomSummary {
+    return {
+      classroomId: row.classroom_id,
+      className: row.class_name,
+      subject: row.subject,
+      teacher: row.teacher_email,
+    };
+  }
+
+  private toClassroomSummary(classroom: DatabaseClassroom): ClassroomSummary {
+    return {
+      classroomId: classroom.classroomId,
+      className: classroom.className,
+      subject: classroom.subject,
+      teacher: classroom.teacher,
+    };
+  }
+
+  private cloneClassroom(classroom: DatabaseClassroom): DatabaseClassroom {
+    return {
+      classroomId: classroom.classroomId,
+      className: classroom.className,
+      subject: classroom.subject,
+      teacher: classroom.teacher,
+      students: new Set(classroom.students),
+      assignments: new Set(classroom.assignments),
     };
   }
 

@@ -207,6 +207,42 @@ describeIfConnection("Database end-to-end with PostgreSQL", () => {
       await database.incrementBrainPoints("missing@example.com", 3)
     ).toBeNull();
     expect(await database.getUserByEmail("missing@example.com")).toBeNull();
+
+    const classroom = await database.createClassroom({
+      className: "Algebra I",
+      subject: "Mathematics",
+      students: [studentEmail],
+      teacher: teacherEmail,
+    });
+
+    expect(classroom.teacher).toBe(teacherEmail);
+    expect(classroom.students.has(studentEmail)).toBe(true);
+
+    const teacherSummaries = await database.getClassroomSummariesByTeacher(
+      teacherEmail
+    );
+    expect(teacherSummaries.map((summary) => summary.classroomId)).toContain(
+      classroom.classroomId
+    );
+
+    const studentSummaries = await database.getClassroomSummariesByStudent(
+      studentEmail
+    );
+    expect(studentSummaries.map((summary) => summary.classroomId)).toContain(
+      classroom.classroomId
+    );
+
+    const detailed = await database.getClassroomById(classroom.classroomId);
+    expect(detailed?.students.has(studentEmail)).toBe(true);
+
+    const updated = await database.updateClassroom({
+      classroomId: classroom.classroomId,
+      className: "Algebra II",
+    });
+    expect(updated?.className).toBe("Algebra II");
+
+    expect(await database.deleteClassroom(classroom.classroomId)).toBe(true);
+    expect(await database.getClassroomById(classroom.classroomId)).toBeNull();
   });
 });
 
