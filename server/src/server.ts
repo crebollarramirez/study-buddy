@@ -13,6 +13,7 @@ import { initializeSocketHandlers } from "./socket/socketHandlers";
 import createAuthRouter from "./routes/auth";
 import "./types/session";
 import { Database, DatabaseUser } from "./database";
+import { SessionData } from "express-session";
 
 // Load environment variables from .env file
 dotenv.config();
@@ -20,7 +21,14 @@ const app = express();
 const server = createServer(app);
 
 // PostgreSQL setup
-const POSTGRES_URL = process.env.POSTGRES_URL;
+const POSTGRES_URL =
+  process.env.POSTGRES_URL ||
+  (process.env.PG_USER &&
+  process.env.PG_HOST &&
+  process.env.PG_DATABASE &&
+  process.env.PG_PORT
+    ? `postgresql://${process.env.PG_USER}@${process.env.PG_HOST}:${process.env.PG_PORT}/${process.env.PG_DATABASE}`
+    : undefined);
 const MONGO_URL = process.env.MONGO_URL;
 const database = new Database(POSTGRES_URL);
 
@@ -165,8 +173,6 @@ app.get(
   }
 );
 
-
-
 app.post(
   "/bot/set-prompt",
   requireAuth,
@@ -194,7 +200,7 @@ app.post(
 
 app.get("/bot/get-prompt", requireAuth, async (req: Request, res: Response) => {
   try {
-    const user = req.user as any;
+    const user = req.user as SessionData;
     const dbUser = await database.getUserByEmail(user.email);
     if (!dbUser) {
       return res.status(404).json({ error: "User not found" });

@@ -61,7 +61,7 @@ async function sendWelcomeMessage(
 ): Promise<void> {
   try {
     const prompt = await database.getTeacherPrompt();
-    const user = socket.user;
+    const user = socket.user as any;
 
     if (user.role === "student") {
       if (prompt) {
@@ -145,7 +145,7 @@ export function initializeSocketHandlers(
     socket.on("message", async (data) => {
       // Check if user is authenticated and has student role
 
-      const user = socket.user;
+      const user = socket.user as any;
       const email = user.email;
 
       try {

@@ -122,7 +122,7 @@ const createAuthRouter = (): AuthRouter => {
             role,
             googleId: user.googleId,
             prompt: role === "teacher" ? null : undefined,
-          });
+          } as any);
           console.log("4. New user created");
         } else {
           console.log("3. Existing user logged in successfully");

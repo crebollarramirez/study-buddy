@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 type QueryResult<T> = { rows: T[] };
 
 interface Queryable {
@@ -128,7 +127,10 @@ class InMemoryQueryRunner implements Queryable {
       return { rows: [] as T[] };
     }
 
-    if (normalized.startsWith("select") && normalized.includes("where google_email = $1")) {
+    if (
+      normalized.startsWith("select") &&
+      normalized.includes("where google_email = $1")
+    ) {
       const email = params[0] as string;
       const user = this.users.get(email);
       return { rows: (user ? [user] : []) as unknown as T[] };
@@ -136,7 +138,15 @@ class InMemoryQueryRunner implements Queryable {
 
     if (normalized.startsWith("insert into users")) {
       const [firstname, lastname, email, role, brainPoints, prompt, googleId] =
-        params as [string, string, string, string, number, string | null, string | null];
+        params as [
+          string,
+          string,
+          string,
+          string,
+          number,
+          string | null,
+          string | null
+        ];
 
       if (!this.users.has(email)) {
         this.users.set(email, {
@@ -153,7 +163,10 @@ class InMemoryQueryRunner implements Queryable {
       return { rows: [] as T[] };
     }
 
-    if (normalized.startsWith("update users") && normalized.includes("set prompt")) {
+    if (
+      normalized.startsWith("update users") &&
+      normalized.includes("set prompt")
+    ) {
       const [email, prompt] = params as [string, string | null];
       const existing = this.users.get(email);
       if (existing) {
@@ -162,12 +175,17 @@ class InMemoryQueryRunner implements Queryable {
       return { rows: [] as T[] };
     }
 
-    if (normalized.startsWith("update users") && normalized.includes("brain_points = brain_points + $2")) {
+    if (
+      normalized.startsWith("update users") &&
+      normalized.includes("brain_points = brain_points + $2")
+    ) {
       const [email, increment] = params as [string, number];
       const existing = this.users.get(email);
       if (existing) {
         existing.brain_points += increment;
-        return { rows: [{ brain_points: existing.brain_points }] as unknown as T[] };
+        return {
+          rows: [{ brain_points: existing.brain_points }] as unknown as T[],
+        };
       }
       return { rows: [] as T[] };
     }
@@ -183,7 +201,10 @@ class InMemoryQueryRunner implements Queryable {
       return { rows: rows as unknown as T[] };
     }
 
-    if (normalized.startsWith("select prompt") && normalized.includes("where role = 'teacher'")) {
+    if (
+      normalized.startsWith("select prompt") &&
+      normalized.includes("where role = 'teacher'")
+    ) {
       const teacher = Array.from(this.users.values())
         .filter((user) => user.role === "teacher")
         .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())[0];
@@ -245,12 +266,17 @@ export class Database {
       try {
         // Dynamically require pg to keep compatibility when dependency is unavailable (e.g., tests).
         const pg = require("pg");
-        return new pg.Pool({ connectionString });
+        const pool = new pg.Pool({ connectionString });
+        console.log("✅ Connected to PostgreSQL database successfully");
+        return pool;
       } catch (error) {
-        console.warn(
-          "pg module not available, falling back to in-memory query runner."
-        );
+        console.error("❌ Failed to connect to PostgreSQL database:", error);
+        console.warn("Falling back to in-memory query runner.");
       }
+    } else {
+      console.warn(
+        "⚠️ No connection string provided, using in-memory database"
+      );
     }
 
     return new InMemoryQueryRunner();
@@ -311,9 +337,10 @@ export class Database {
    * @returns {Promise<DatabaseUser | null>} Resolves with the located user or `null` when absent.
    */
   async getUserByEmail(email: string): Promise<DatabaseUser | null> {
-    const result = await this.queryRunner.query<UserRow>(SELECT_USER_BY_EMAIL_SQL, [
-      email,
-    ]);
+    const result = await this.queryRunner.query<UserRow>(
+      SELECT_USER_BY_EMAIL_SQL,
+      [email]
+    );
     const row = result.rows[0];
     return row ? this.mapRowToUser(row) : null;
   }
@@ -334,7 +361,13 @@ export class Database {
    *
    * @returns {Promise<void>} Resolves after the insertion attempt completes.
    */
-  async createUser({ email, fullName, role, googleId, prompt }: CreateUserInput) {
+  async createUser({
+    email,
+    fullName,
+    role,
+    googleId,
+    prompt,
+  }: CreateUserInput) {
     const { firstname, lastname } = this.splitName(fullName);
     await this.queryRunner.query(INSERT_USER_SQL, [
       firstname,
@@ -385,7 +418,10 @@ export class Database {
    *
    * @returns {Promise<number | null>} Resolves with the new balance or `null` when the user is missing.
    */
-  async incrementBrainPoints(email: string, amount: number): Promise<number | null> {
+  async incrementBrainPoints(
+    email: string,
+    amount: number
+  ): Promise<number | null> {
     const result = await this.queryRunner.query<{ brain_points: number }>(
       INCREMENT_BRAIN_POINTS_SQL,
       [email, amount]
@@ -447,7 +483,10 @@ export class Database {
    * @returns {DatabaseUser} Canonical representation of the supplied row.
    */
   private mapRowToUser(row: UserRow): DatabaseUser {
-    const fullName = [row.firstname, row.lastname].filter(Boolean).join(" ").trim();
+    const fullName = [row.firstname, row.lastname]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
     return {
       email: row.google_email,
       fullName: fullName || row.firstname || row.lastname || "",
