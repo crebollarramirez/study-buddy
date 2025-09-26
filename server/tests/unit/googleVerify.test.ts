@@ -1,8 +1,8 @@
 import { makeGoogleVerify, GoogleProfile } from "src/config/googleVerify";
 
 describe("makeGoogleVerify", () => {
-  const mockUsers = {
-    findOne: jest.fn(),
+  const mockDatabase = {
+    getUserByEmail: jest.fn(),
   };
 
   const baseProfile: GoogleProfile = {
@@ -19,24 +19,22 @@ describe("makeGoogleVerify", () => {
 
   it("should return error if no email in profile", async () => {
     const profile = { ...baseProfile, emails: [] };
-    await makeGoogleVerify(mockUsers as any)("", "", profile, done);
+    await makeGoogleVerify(mockDatabase as any)("", "", profile, done);
 
     expect(done).toHaveBeenCalledWith(expect.any(Error));
   });
 
   it("should return userData with isNewUser=true if user does not exist", async () => {
-    mockUsers.findOne.mockResolvedValueOnce(null);
+    mockDatabase.getUserByEmail.mockResolvedValueOnce(null);
 
-    await makeGoogleVerify(mockUsers as any)("", "", baseProfile, done);
+    await makeGoogleVerify(mockDatabase as any)("", "", baseProfile, done);
 
-    expect(mockUsers.findOne).toHaveBeenCalledWith({
-      email: "ada@example.com",
-    });
+    expect(mockDatabase.getUserByEmail).toHaveBeenCalledWith("ada@example.com");
     expect(done).toHaveBeenCalledWith(
       null,
       expect.objectContaining({
         email: "ada@example.com",
-        name: "Ada Lovelace",
+        fullName: "Ada Lovelace",
         googleId: "gid-123",
         isNewUser: true,
         role: "student", // default role when new
@@ -45,12 +43,13 @@ describe("makeGoogleVerify", () => {
   });
 
   it("should return userData with isNewUser=false if user already exists", async () => {
-    mockUsers.findOne.mockResolvedValueOnce({
+    mockDatabase.getUserByEmail.mockResolvedValueOnce({
       email: "ada@example.com",
       role: "Teacher",
+      fullName: "Ada Lovelace",
     });
 
-    await makeGoogleVerify(mockUsers as any)("", "", baseProfile, done);
+    await makeGoogleVerify(mockDatabase as any)("", "", baseProfile, done);
 
     expect(done).toHaveBeenCalledWith(
       null,
@@ -64,9 +63,9 @@ describe("makeGoogleVerify", () => {
 
   it("should call done with error if DB lookup throws", async () => {
     const error = new Error("DB error");
-    mockUsers.findOne.mockRejectedValueOnce(error);
+    mockDatabase.getUserByEmail.mockRejectedValueOnce(error);
 
-    await makeGoogleVerify(mockUsers as any)("", "", baseProfile, done);
+    await makeGoogleVerify(mockDatabase as any)("", "", baseProfile, done);
 
     expect(done).toHaveBeenCalledWith(error);
   });

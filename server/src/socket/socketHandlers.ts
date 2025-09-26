@@ -1,38 +1,19 @@
 // src/ws/initializeSocketHandlers.ts
 import { Server as SocketIOServer, Socket } from "socket.io";
-import { Collection } from "mongodb";
 import OpenAI from "openai";
+import { Database, DatabaseUser } from "../database";
 import { Pool } from "pg";
-import { AI_Chat_Bot } from "../bot/AI_Chat_Bot"; 
 
 interface CustomSocket extends Socket {
   request: any;
-  user?: any; // authenticated user document
-  conversationId?: string | undefined;
-  bot?: AI_Chat_Bot | undefined;
+  user?: DatabaseUser; // Add user property for authenticated user
 }
 
-/**
- * Authenticates a socket connection by verifying the user's session and retrieving
- * the corresponding user data from the database. If authentication fails, the socket
- * connection is terminated with an appropriate error message.
- *
- * @param socket - The custom socket instance representing the client's connection.
- * @param users - The MongoDB collection containing user data.
- * 
- * @returns A promise that resolves to the authenticated user object if successful,
- * or `null` if authentication fails.
- *
- * @throws Emits an "auth_error" event to the socket with a descriptive error message
- * and disconnects the socket in case of authentication failure or database errors.
- *
- * @remarks
- * - The function expects the session data to be available on `socket.request.session`.
- * - The session must include a `passport.user` field containing the user's email.
- * - If the user is not found in the database or the session is invalid, the connection
- *   is terminated.
- */
-async function authenticateSocket(socket: CustomSocket, users: Collection) {
+// Socket-specific authentication function
+async function authenticateSocket(
+  socket: CustomSocket,
+  database: Database
+): Promise<DatabaseUser | null> {
   console.log("Socket connection attempt");
   const session = socket.request.session;
   console.log("Session data:", session);
@@ -49,7 +30,7 @@ async function authenticateSocket(socket: CustomSocket, users: Collection) {
   }
 
   try {
-    const user = await users.findOne({ email: userEmail });
+    const user = await database.getUserByEmail(userEmail);
     if (!user) {
       console.log("User not found in database:", userEmail);
       socket.emit("auth_error", {
@@ -70,44 +51,28 @@ async function authenticateSocket(socket: CustomSocket, users: Collection) {
   }
 }
 
-/**
- * Sends a welcome message to the connected user based on their role.
- * 
- * This function retrieves the teacher's data from the provided `users` collection
- * to determine the class topic. Depending on the role of the connected user
- * (either "student" or "teacher"), it emits an appropriate welcome message
- * through the provided socket connection.
- * 
- * @param socket - The socket instance representing the connected user. 
- *                 It includes user information such as their role and name.
- * @param users - A collection interface used to query user data, specifically
- *                to fetch the teacher's information.
- * 
- * @throws Will log an error to the console if there is an issue fetching the teacher's data.
- */
-async function sendWelcomeMessage(socket: CustomSocket, users: Collection) {
+// Helper function to send welcome message based on user role
+async function sendWelcomeMessage(
+  socket: CustomSocket,
+  database: Database
+): Promise<void> {
   try {
-    const teacher = await users.findOne(
-      { role: "teacher" },
-    );
-
-    console.log("Fetched teacher data for welcome message:", teacher);
-    const topic = teacher?.prompt;
-    const user = socket.user;
+    const prompt = await database.getTeacherPrompt();
+    const user = socket.user as any;
 
     if (user.role === "student") {
-      if (topic) {
+      if (prompt) {
         socket.emit("response", {
-          message: `Welcome, ${user.name}! Your class topic is: ${topic}`,
+          message: `Welcome, ${user.fullName}! Your teacher has set the prompt to be: ${prompt}`,
         });
       } else {
         socket.emit("response", {
-          message: `Welcome, ${user.name}! Your teacher hasn't set a topic yet.`,
+          message: `Welcome, ${user.fullName}! No prompt has been set by your teacher yet.`,
         });
       }
     } else if (user.role === "teacher") {
       socket.emit("response", {
-        message: `Welcome, ${user.name}! You are connected as a teacher.`,
+        message: `Welcome, ${user.fullName}! You are connected as a teacher.`,
       });
     }
   } catch (error) {
@@ -141,7 +106,7 @@ async function ensureConversation(
     const check = await pg.query<{ id: string }>(
       `SELECT id FROM conversations WHERE student_id = $1 LIMIT 1`,
       [conversationId]
-    );
+    ) as any;
     if (check.rowCount === 1) return conversationId;
     throw new Error("Conversation not found or not owned by current student");
   }
@@ -151,7 +116,7 @@ async function ensureConversation(
   const existing = await pg.query<{ id: string }>(
     `SELECT id FROM conversations WHERE student_id = $1 LIMIT 1`,
     [studentId]
-  );
+  ) as any;
 
   if (existing.rowCount === 0) {
     // Create new conversation using gen_random_uuid() for id but studentId for student_id
@@ -173,211 +138,118 @@ async function ensureConversation(
 
 export function initializeSocketHandlers(
   io: SocketIOServer,
-  users: Collection,
-  pg: Pool,
+  database: Database,
   openai: OpenAI
 ) {
   io.on("connection", async (socket: CustomSocket) => {
-    // 1) Authenticate
-    const user = await authenticateSocket(socket, users);
-    if (!user) return; // disconnected already
+    // Authenticate the socket connection
+    const user = await authenticateSocket(socket, database);
+    if (!user) {
+      // Authentication failed, socket already disconnected
+      return;
+    }
+
+    // Attach user to socket for easy access
     socket.user = user;
     console.log(`Client connected: ${user.email} (${user.role})`);
 
-    // 2) Welcome
-    await sendWelcomeMessage(socket, users);
-    console.log("Welcome message sent");
+    // Send personalized welcome message
+    await sendWelcomeMessage(socket, database);
 
-    // 3) Auto-join conversation (creates AI_Chat_Bot per socket automatically)
-    try {
-      const studentId = String(socket.user._id);
-      const teacherDoc = await users.findOne(
-        { role: "teacher" },
-      );
-      if (!teacherDoc) throw new Error("Teacher not found");
-      const teacherId = String(teacherDoc._id);
-
-      const topic = String(teacherDoc.prompt ?? "");
-      console.log("Auto-joining conversation for user:", socket.user.email);
-
-      // Create new conversation (no existing conversationId)
-      const conversationId = await ensureConversation(
-        pg,
-        studentId,
-        teacherId,
-        topic
-      );
-
-      // Create a bot instance bound to this socket's conversation
-      const bot = new AI_Chat_Bot(conversationId, studentId, teacherId, topic, pg, openai);
-      await bot.init();
-
-      socket.conversationId = conversationId;
-      socket.bot = bot;
-
-      socket.join(conversationId);
-      socket.emit("joined", { conversationId, topic });
+    // Handle client disconnect
+    socket.on("disconnect", () => {
+      const user = socket.user;
       console.log(
-        `${socket.user?.email} auto-joined conversation: ${conversationId}`
+        `Client disconnected: ${user?.email || "unknown"} (${
+          user?.role || "unknown"
+        })`
       );
-    } catch (err: any) {
-      console.error("Auto-join error:", err);
-      socket.emit("error", {
-        code: "AUTO_JOIN_FAIL",
-        message: err?.message ?? "Failed to join conversation",
-      });
-    }
-
-    // 4) Manual join conversation (optional - kept for backward compatibility)
-    // socket.on("join", async (data: any) => {
-    //   try {
-    //     const rawConvId = data?.conversationId || data?.room; // backward-compat: accept "room"
-    //     const studentId = String(socket.user._id);
-    //     const teacherDoc = await users.findOne(
-    //       { role: "teacher" },
-    //       { projection: { _id: 1, topic: 1 } }
-    //     );
-    //     if (!teacherDoc) throw new Error("Teacher not found");
-    //     const teacherId = String(teacherDoc._id);
-
-
-    //     console.log("This is teacher id, ", teacherId)
-    //     const topic = String(teacherDoc.topic ?? "");
-
-    //     console.log("this is the join data:", data);
-
-    //     // Ensure conversation id
-    //     const conversationId = await ensureConversation(
-    //       pg,
-    //       studentId,
-    //       teacherId,
-    //       topic,
-    //       rawConvId
-    //     );
-
-    //     // If this socket already had a bot, clean it up before switching rooms
-    //     if (socket.bot) {
-    //       try {
-    //         socket.bot.dispose();
-    //       } catch {}
-    //       socket.leave(socket.conversationId as string);
-    //     }
-
-    //     // Create a bot instance bound to this socket's conversation
-    //     const bot = new AI_Chat_Bot(conversationId, topic, pg, openai);
-    //     await bot.init();
-
-    //     socket.conversationId = conversationId;
-    //     socket.bot = bot;
-
-    //     socket.join(conversationId);
-    //     socket.to(conversationId).emit("status", {
-    //       msg: `${socket.user?.name || "A user"} (${
-    //         socket.user?.role || "unknown"
-    //       }) has joined the conversation.`,
-    //     });
-
-    //     socket.emit("joined", { conversationId, topic });
-    //     console.log(
-    //       `${socket.user?.email} joined conversation: ${conversationId}`
-    //     );
-    //   } catch (err: any) {
-    //     console.error("Join error:", err);
-    //     socket.emit("error", {
-    //       code: "JOIN_FAIL",
-    //       message: err?.message ?? "Join failed",
-    //     });
-    //   }
-    // });
-
-    // 5) Leave conversation
-    socket.on("leave", (data: any) => {
-      try {
-        const conv =
-          data?.conversationId || data?.room || socket.conversationId;
-        if (!conv) return;
-        socket.leave(conv);
-        socket.to(conv).emit("status", {
-          msg: `${socket.user?.name || "A user"} (${
-            socket.user?.role || "unknown"
-          }) has left the conversation.`,
-        });
-        console.log(`${socket.user?.email} left conversation: ${conv}`);
-
-        if (socket.bot) {
-          try {
-            delete socket.bot;
-          } catch {}
-          socket.bot = undefined;
-        }
-        socket.conversationId = undefined;
-      } catch (err) {
-        console.error("Leave error:", err);
-      }
     });
 
-    // 6) User message -> bot turn
-    socket.on("message", async (data: any) => {
-      const userDoc = socket.user;
-      if (!userDoc) {
-        socket.emit("auth_error", { message: "Not authenticated" });
-        return;
-      }
-      if (!socket.bot || !socket.conversationId) {
-        socket.emit("error", {
-          code: "ROOM",
-          message: "Join a conversation first",
-        });
-        return;
-      }
+    // Handle room joining
+    socket.on("join", (data) => {
+      const room = data.room;
+      const user = socket.user;
 
-      console.log("message", data);
+      socket.join(room);
+      socket.to(room).emit("status", {
+        msg: `${user?.fullName || "A user"} (${ 
+          user?.role || "unknown"
+        }) has joined the room.`,
+      });
+      console.log(`${user?.email} joined room: ${room}`);
+    });
+
+    // Handle room leaving
+    socket.on("leave", (data) => {
+      const room = data.room;
+      const user = socket.user;
+
+      socket.leave(room);
+      socket.to(room).emit("status", {
+        msg: `${user?.fullName || "A user"} (${ 
+          user?.role || "unknown"
+        }) has left the room.`,
+      });
+      console.log(`${user?.email} left room: ${room}`);
+    });
+
+    // Handle chat messages
+    socket.on("message", async (data) => {
+      // Check if user is authenticated and has student role
+
+      const user = socket.user as any;
+      const email = user.email;
+
       try {
-        let userMessage: string;
-        if (typeof data === "string") {
-          try {
-            const parsed = JSON.parse(data);
-            userMessage = parsed?.message ?? data;
-          } catch {
-            userMessage = data;
-          }
-        } else {
-          userMessage = data?.message ?? "";
-        }
-        if (!userMessage || typeof userMessage !== "string") {
-          socket.emit("error", { code: "BAD_INPUT", message: "Empty message" });
+        const prompt = await database.getTeacherPrompt();
+
+        if (!prompt) {
+          console.log("No prompt set by teacher");
+          socket.emit("response", {
+            message: "Your teacher hasn't set a prompt yet.",
+          });
           return;
         }
 
+        const parsedData = JSON.parse(data);
+        const userMessage = parsedData.message || "";
+
+        console.log(`Message from user (${user.role}): ${userMessage}`);
         socket.emit("status", { message: "Assistant is thinking..." });
 
-        // The bot manages Postgres memory + no-repeat and returns ONE question
-        const question = await socket.bot.onUserMessage(userMessage);
-
-        // Emit to this client (and optionally the room)
-        socket.emit("response", { message: question, from: "assistant" });
-        // io.to(socket.conversationId).emit("response", { message: question, from: "assistant" });
-      } catch (error) {
-        console.error("Error processing message:", error);
-        socket.emit("error", {
-          code: "TURN_FAIL",
-          message: "Error processing your request",
+        // Call OpenAI API for AI response
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are a mentor that only asks questions to students that will help poke holes in their knowledge so they know what to learn more of in the future. You primarily respond back to student answers with additional questions that allow them to think more deeply. An example conversation might go:  Student: "A rabbit is a four-legged animal" Mentor: "What else do you know about rabbits?" Student: "I know that they are small and furry and are fast and they eat carrots." Mentor: "Would it make sense for a rabbit to eat a sandwich?" Student: "No, humans eat sandwiches -- not rabbits." Mentor: "What else do rabbits typically eat?" Make sure to encourage students to either ask their teacher and to look answers up if they do not know the answer. If the conversation deviates significantly from the original topic, guide the conversation back to the original topic. Additionally, with each response you return, grade a student's response with "points", which can be a minimum value of 0 and a maximum value of 20. Example: {"response": "Hello", "points": 10} The number of points a student should receive for a message should be based off of how relevant it is to the subject matter, whether the student response addresses the question that you previously gave them, and how unique or creative the student response is. Format your responses as JSON with two keys: "response" and "points". The value of "response" should be your insightful question as a mentor as a string. The value of "points" should be the number of points you gave the student's response. Do not stop formatting your response as JSON. Your response should always be JSON format with two keys "response" and "points". There should never be an empty value associated with these keys. Please be kind to your students. Do not curse. Do not break character, please. Thank you. The topic that students will be learning is: ${prompt}`,
+            },
+            { role: "user", content: userMessage },
+          ],
+          max_tokens: 500,
         });
-      }
-    });
 
-    // 7) Disconnect cleanup
-    socket.on("disconnect", () => {
-      const u = socket.user;
-      console.log(
-        `Client disconnected: ${u?.email || "unknown"} (${
-          u?.role || "unknown"
-        })`
-      );
-      if (socket.bot) {
-        try {
-          delete socket.bot;
-        } catch {}
+        const assistantResponse = JSON.parse(
+          response.choices[0]?.message?.content ||
+            '{"response": "Error processing response", "points": 0}'
+        );
+        console.log("AI Response:", assistantResponse);
+
+        // Update user's brain points
+        const points = Number.parseInt(assistantResponse.points, 10);
+        const increment = Number.isNaN(points) ? 0 : points;
+        await database.incrementBrainPoints(email, increment);
+
+        // Send response back to the user
+        socket.emit("response", {
+          message: assistantResponse.response,
+          from: "assistant",
+        });
+      } catch (error) {
+        console.error(`Error processing message: ${error}`);
+        socket.emit("error", { msg: "Error processing your request" });
       }
     });
   });

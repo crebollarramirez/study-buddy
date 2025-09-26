@@ -8,6 +8,12 @@ module.exports = {
   testEnvironment: "node",
   rootDir: ".",
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json", "node"],
+  testMatch: [
+    "<rootDir>/tests/**/*.test.ts",
+    "<rootDir>/tests/**/*.spec.ts",
+    "<rootDir>/src/**/*.test.ts",
+    "<rootDir>/src/**/*.spec.ts",
+  ],
   moduleNameMapper: {
     "^@tests/(.*)$": "<rootDir>/tests/$1",
     "^src/(.*)$": "<rootDir>/src/$1",
